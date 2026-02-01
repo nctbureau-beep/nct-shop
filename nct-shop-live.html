@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NCT Shop</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'main': ['IBM Plex Sans Arabic', 'sans-serif'],
+                        'mono': ['Space Mono', 'monospace'],
+                    },
+                    colors: {
+                        'nct': {
+                            'bg': '#0F172A',
+                            'card': '#1E293B',
+                            'accent': '#F97316',
+                            'teal': '#14B8A6',
+                            'surface': '#334155',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { font-family: 'IBM Plex Sans Arabic', sans-serif; }
+        .glass { background: rgba(30, 41, 59, 0.8); backdrop-filter: blur(12px); }
+        .glow { box-shadow: 0 0 40px rgba(249, 115, 22, 0.3); }
+        .card-hover { transition: all 0.3s ease; }
+        .card-hover:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,0.4); }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+        .float { animation: float 3s ease-in-out infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .pulse { animation: pulse 2s ease-in-out infinite; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        input:focus { outline: none; }
+    </style>
+</head>
+<body class="bg-nct-bg min-h-screen text-white">
+    <div id="app"></div>
+
+    <script>
+        // ============================================
+        // CONFIGURATION - UPDATE THIS!
+        // ============================================
+        const CONFIG = {
+            // Google Apps Script Web App URL
+            API_URL: 'https://script.google.com/macros/s/AKfycbyITdeDB8MeKsoWgzBue9boWICVfRBavrvtyMH3LpZ6J6MImz-kpKfNDQpnTS8XGDtCZQ/exec',
+            
+            // Live mode - connected to Notion
+            DEMO_MODE: false
+        };
+
+        // Demo data for testing without backend
+        const DEMO_DATA = {
+            items: [
+                { id: '1', name: 'Pepsi', category: 'Drinks', pointCost: 5, description: 'Cold refreshing Pepsi', emoji: '🥤' },
+                { id: '2', name: 'Coffee', category: 'Coffee & Tea', pointCost: 8, description: 'Fresh brewed coffee', emoji: '☕' },
+                { id: '3', name: 'Tea', category: 'Coffee & Tea', pointCost: 4, description: 'Hot tea', emoji: '🍵' },
+                { id: '4', name: 'Sandwich', category: 'Meals', pointCost: 15, description: 'Fresh sandwich', emoji: '🥪' },
+                { id: '5', name: 'Chips', category: 'Snacks', pointCost: 6, description: 'Crispy chips', emoji: '🍟' },
+                { id: '6', name: 'Chocolate', category: 'Desserts', pointCost: 8, description: 'Chocolate bar', emoji: '🍫' },
+                { id: '7', name: 'Water', category: 'Drinks', pointCost: 3, description: 'Pure water', emoji: '💧' },
+                { id: '8', name: 'Energy Drink', category: 'Drinks', pointCost: 10, description: 'Energy boost', emoji: '⚡' },
+                { id: '9', name: 'Biscuits', category: 'Snacks', pointCost: 5, description: 'Assorted biscuits', emoji: '🍪' },
+                { id: '10', name: 'Juice', category: 'Drinks', pointCost: 6, description: 'Fresh juice', emoji: '🧃' },
+            ],
+            users: {
+                'hassan@nct.iq': { id: 'u1', name: 'Hassan', email: 'hassan@nct.iq', password: '123456', pointsBalance: 60, monthlyAllocation: 60, pointsUsed: 0 },
+                'ahmed@nct.iq': { id: 'u2', name: 'Ahmed', email: 'ahmed@nct.iq', password: '123456', pointsBalance: 45, monthlyAllocation: 60, pointsUsed: 15 },
+                'sara@nct.iq': { id: 'u3', name: 'Sara', email: 'sara@nct.iq', password: '123456', pointsBalance: 120, monthlyAllocation: 60, pointsUsed: 0 },
+            },
+            requests: []
+        };
+
+        // ============================================
+        // API FUNCTIONS
+        // ============================================
+        
+        async function apiCall(action, params = {}, postData = null) {
+            if (CONFIG.DEMO_MODE) {
+                return demoApiCall(action, params, postData);
+            }
+            
+            let url = `${CONFIG.API_URL}?action=${action}`;
+            Object.keys(params).forEach(key => {
+                url += `&${key}=${encodeURIComponent(params[key])}`;
+            });
+            
+            const options = { method: postData ? 'POST' : 'GET' };
+            if (postData) {
+                options.body = JSON.stringify(postData);
+                options.headers = { 'Content-Type': 'application/json' };
+            }
+            
+            const response = await fetch(url, options);
+            return response.json();
+        }
+
+        function demoApiCall(action, params, postData) {
+            return new Promise(resolve => {
+                setTimeout(() => {
+                    switch(action) {
+                        case 'getItems':
+                            resolve({ success: true, items: DEMO_DATA.items });
+                            break;
+                        case 'login':
+                            const user = DEMO_DATA.users[params.email?.toLowerCase()];
+                            if (user && user.password === params.password) {
+                                resolve({ success: true, user: {...user, password: undefined} });
+                            } else {
+                                resolve({ success: false, error: 'Invalid email or password' });
+                            }
+                            break;
+                        case 'getUserRequests':
+                            const userRequests = DEMO_DATA.requests.filter(r => r.userId === params.userId);
+                            resolve({ success: true, requests: userRequests });
+                            break;
+                        case 'createRequest':
+                            const item = DEMO_DATA.items.find(i => i.id === postData.itemId);
+                            const newRequest = {
+                                id: 'r' + Date.now(),
+                                userId: postData.userId,
+                                itemId: postData.itemId,
+                                itemName: postData.itemName,
+                                itemEmoji: item?.emoji || '📦',
+                                status: 'Pending',
+                                pointsSpent: postData.pointsSpent,
+                                dateRequested: new Date().toISOString()
+                            };
+                            DEMO_DATA.requests.unshift(newRequest);
+                            
+                            // Update user balance in demo
+                            Object.values(DEMO_DATA.users).forEach(u => {
+                                if (u.id === postData.userId) {
+                                    u.pointsBalance -= postData.pointsSpent;
+                                    u.pointsUsed += postData.pointsSpent;
+                                }
+                            });
+                            
+                            resolve({ success: true, request: newRequest, newBalance: DEMO_DATA.users[Object.keys(DEMO_DATA.users).find(k => DEMO_DATA.users[k].id === postData.userId)]?.pointsBalance });
+                            break;
+                        default:
+                            resolve({ error: 'Unknown action' });
+                    }
+                }, 300);
+            });
+        }
+
+        // ============================================
+        // APP STATE
+        // ============================================
+        
+        let state = {
+            user: JSON.parse(localStorage.getItem('nctshop_user')) || null,
+            items: [],
+            requests: [],
+            selectedCategory: 'All',
+            searchQuery: '',
+            loading: false,
+            toast: null,
+            showHistory: false,
+            showLogin: true,
+            showAddItem: false
+        };
+
+        const CATEGORIES = ['All', 'Drinks', 'Coffee & Tea', 'Snacks', 'Meals', 'Desserts'];
+        const CATEGORY_COLORS = {
+            'Drinks': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+            'Coffee & Tea': 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+            'Snacks': 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+            'Meals': 'bg-green-500/20 text-green-400 border-green-500/30',
+            'Desserts': 'bg-pink-500/20 text-pink-400 border-pink-500/30',
+            'Other': 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+        };
+
+        // ============================================
+        // RENDER FUNCTIONS
+        // ============================================
+        
+        function render() {
+            const app = document.getElementById('app');
+            
+            if (!state.user) {
+                app.innerHTML = renderLogin();
+            } else {
+                app.innerHTML = `
+                    ${renderHeader()}
+                    <main class="max-w-7xl mx-auto px-4 py-6">
+                        ${renderStats()}
+                        ${renderControls()}
+                        ${renderCategories()}
+                        ${renderItems()}
+                    </main>
+                    ${state.showHistory ? renderHistory() : ''}
+                    ${state.showAddItem ? renderAddItem() : ''}
+                    ${state.toast ? renderToast() : ''}
+                `;
+            }
+            
+            attachEventListeners();
+        }
+
+        function renderLogin() {
+            return `
+                <div class="min-h-screen flex items-center justify-center p-4">
+                    <div class="glass rounded-3xl p-8 w-full max-w-md border border-white/10">
+                        <div class="text-center mb-8">
+                            <div class="text-6xl mb-4 float">🛒</div>
+                            <h1 class="text-3xl font-bold mb-2">NCT Shop</h1>
+                            <p class="text-gray-400">Employee Rewards System</p>
+                        </div>
+                        
+                        <form id="loginForm" class="space-y-4">
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-2">Email</label>
+                                <input type="email" id="loginEmail" placeholder="your.email@nct.iq" 
+                                    class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:border-nct-accent transition-colors"
+                                    value="hassan@nct.iq">
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-2">Password</label>
+                                <input type="password" id="loginPassword" placeholder="••••••••"
+                                    class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:border-nct-accent transition-colors"
+                                    value="123456">
+                            </div>
+                            <button type="submit" id="loginBtn"
+                                class="w-full bg-nct-accent hover:bg-orange-600 text-white font-bold py-4 rounded-xl transition-colors mt-6">
+                                Sign In
+                            </button>
+                        </form>
+                        
+                        <p class="text-center text-gray-500 text-sm mt-6">
+                            ${CONFIG.DEMO_MODE ? '🎮 Demo Mode - Try: hassan@nct.iq / 123456' : 'Contact admin for account access'}
+                        </p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderHeader() {
+            return `
+                <header class="glass sticky top-0 z-40 border-b border-white/10">
+                    <div class="max-w-7xl mx-auto px-4 py-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-nct-accent to-amber-500 flex items-center justify-center">
+                                    <span class="text-xl">🛒</span>
+                                </div>
+                                <div>
+                                    <h1 class="text-xl font-bold">NCT Shop</h1>
+                                    <p class="text-xs text-gray-400">Welcome, ${state.user.name}</p>
+                                </div>
+                            </div>
+                            
+                            <div class="flex items-center gap-3">
+                                <div class="bg-gradient-to-r from-nct-teal to-emerald-500 px-5 py-2 rounded-xl">
+                                    <div class="flex items-center gap-2">
+                                        <span>💎</span>
+                                        <span class="font-mono font-bold text-lg">${state.user.pointsBalance}</span>
+                                        <span class="text-sm opacity-80">pts</span>
+                                    </div>
+                                </div>
+                                <button onclick="logout()" class="p-2 hover:bg-white/10 rounded-xl transition-colors" title="Logout">
+                                    🚪
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </header>
+            `;
+        }
+
+        function renderStats() {
+            const percentUsed = (state.user.pointsUsed / state.user.monthlyAllocation) * 100;
+            return `
+                <div class="glass rounded-2xl p-6 mb-6 border border-white/10 relative overflow-hidden">
+                    <div class="absolute -right-16 -top-16 w-48 h-48 bg-nct-accent/20 rounded-full blur-3xl"></div>
+                    <div class="absolute -left-16 -bottom-16 w-48 h-48 bg-nct-teal/20 rounded-full blur-3xl"></div>
+                    
+                    <div class="relative grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="bg-white/5 rounded-xl p-4">
+                            <p class="text-gray-400 text-sm">Available</p>
+                            <p class="text-3xl font-bold font-mono text-nct-teal">${state.user.pointsBalance}</p>
+                            <p class="text-xs text-gray-500">points</p>
+                        </div>
+                        <div class="bg-white/5 rounded-xl p-4">
+                            <p class="text-gray-400 text-sm">Used This Month</p>
+                            <p class="text-3xl font-bold font-mono">${state.user.pointsUsed}</p>
+                            <p class="text-xs text-gray-500">points</p>
+                        </div>
+                        <div class="bg-white/5 rounded-xl p-4">
+                            <p class="text-gray-400 text-sm">Monthly Add</p>
+                            <p class="text-3xl font-bold font-mono text-nct-accent">+${state.user.monthlyAllocation}</p>
+                            <p class="text-xs text-gray-500">on 1st</p>
+                        </div>
+                        <div class="bg-white/5 rounded-xl p-4">
+                            <p class="text-gray-400 text-sm">IQD Value</p>
+                            <p class="text-2xl font-bold font-mono">${(state.user.pointsBalance * 250).toLocaleString()}</p>
+                            <p class="text-xs text-gray-500">1pt = 250 IQD</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderControls() {
+            return `
+                <div class="flex flex-col sm:flex-row gap-3 mb-6">
+                    <div class="flex-1 relative">
+                        <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+                        <input type="text" id="searchInput" placeholder="Search items..." value="${state.searchQuery}"
+                            class="w-full bg-nct-card border border-white/10 rounded-xl pl-12 pr-4 py-3 text-white placeholder-gray-500 focus:border-nct-accent transition-colors">
+                    </div>
+                    <button onclick="state.showHistory=true;render()" 
+                        class="bg-nct-card border border-white/10 hover:border-nct-accent rounded-xl px-5 py-3 font-medium transition-colors flex items-center gap-2">
+                        <span>📋</span> My Requests
+                    </button>
+                    <button onclick="state.showAddItem=true;render()" 
+                        class="bg-nct-accent hover:bg-orange-600 rounded-xl px-5 py-3 font-medium transition-colors flex items-center gap-2">
+                        <span>➕</span> Add Item
+                    </button>
+                </div>
+            `;
+        }
+
+        function renderCategories() {
+            return `
+                <div class="flex gap-2 overflow-x-auto scrollbar-hide pb-4">
+                    ${CATEGORIES.map(cat => `
+                        <button onclick="setCategory('${cat}')"
+                            class="px-5 py-2.5 rounded-full font-medium whitespace-nowrap transition-all ${
+                                state.selectedCategory === cat 
+                                    ? 'bg-nct-accent text-white' 
+                                    : 'bg-nct-card text-gray-400 hover:text-white border border-white/10'
+                            }">
+                            ${cat}
+                        </button>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function renderItems() {
+            const filtered = state.items.filter(item => {
+                const matchesCat = state.selectedCategory === 'All' || item.category === state.selectedCategory;
+                const matchesSearch = item.name.toLowerCase().includes(state.searchQuery.toLowerCase());
+                return matchesCat && matchesSearch;
+            });
+
+            if (state.loading) {
+                return `<div class="text-center py-20"><div class="text-4xl pulse">⏳</div><p class="text-gray-400 mt-4">Loading items...</p></div>`;
+            }
+
+            if (filtered.length === 0) {
+                return `<div class="text-center py-20"><div class="text-4xl">🔍</div><p class="text-gray-400 mt-4">No items found</p></div>`;
+            }
+
+            return `
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mt-6">
+                    ${filtered.map(item => renderItemCard(item)).join('')}
+                </div>
+            `;
+        }
+
+        function renderItemCard(item) {
+            const canAfford = state.user.pointsBalance >= item.pointCost;
+            const colorClass = CATEGORY_COLORS[item.category] || CATEGORY_COLORS['Other'];
+            
+            return `
+                <div class="bg-nct-card rounded-2xl p-5 border border-white/10 card-hover relative overflow-hidden">
+                    <div class="absolute top-3 right-3">
+                        <span class="text-xs px-2 py-1 rounded-full border ${colorClass}">${item.category}</span>
+                    </div>
+                    
+                    <div class="text-5xl mb-3 float">${item.emoji || '📦'}</div>
+                    
+                    <h3 class="font-bold text-lg mb-1">${item.name}</h3>
+                    <p class="text-gray-500 text-sm mb-4 line-clamp-2">${item.description}</p>
+                    
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <span class="text-2xl font-bold font-mono text-nct-accent">${item.pointCost}</span>
+                            <span class="text-gray-400 text-sm"> pts</span>
+                            <p class="text-xs text-gray-600">${(item.pointCost * 250).toLocaleString()} IQD</p>
+                        </div>
+                        <button onclick="orderItem('${item.id}')" 
+                            class="px-4 py-2 rounded-xl font-bold text-sm transition-all ${
+                                canAfford 
+                                    ? 'bg-nct-accent hover:bg-orange-600 text-white' 
+                                    : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                            }" ${!canAfford ? 'disabled' : ''}>
+                            ${canAfford ? 'Order' : '💸'}
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderHistory() {
+            return `
+                <div class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onclick="if(event.target===this){state.showHistory=false;render()}">
+                    <div class="glass rounded-2xl w-full max-w-lg max-h-[80vh] overflow-hidden border border-white/10">
+                        <div class="p-5 border-b border-white/10 flex items-center justify-between">
+                            <div>
+                                <h2 class="text-xl font-bold">My Requests</h2>
+                                <p class="text-gray-400 text-sm">Track your orders</p>
+                            </div>
+                            <button onclick="state.showHistory=false;render()" class="p-2 hover:bg-white/10 rounded-xl">✕</button>
+                        </div>
+                        
+                        <div class="p-5 overflow-y-auto max-h-[60vh]">
+                            ${state.requests.length === 0 
+                                ? `<div class="text-center py-10"><span class="text-4xl">📋</span><p class="text-gray-400 mt-4">No requests yet</p></div>`
+                                : state.requests.map(req => `
+                                    <div class="bg-white/5 rounded-xl p-4 mb-3 flex items-center justify-between">
+                                        <div class="flex items-center gap-3">
+                                            <span class="text-2xl">${req.itemEmoji || '📦'}</span>
+                                            <div>
+                                                <p class="font-medium">${req.itemName}</p>
+                                                <p class="text-xs text-gray-500">${new Date(req.dateRequested).toLocaleDateString()}</p>
+                                            </div>
+                                        </div>
+                                        <div class="text-right">
+                                            <p class="font-mono font-bold text-nct-accent">${req.pointsSpent} pts</p>
+                                            <span class="text-xs px-2 py-1 rounded-full ${
+                                                req.status === 'Pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                                                req.status === 'Approved' ? 'bg-green-500/20 text-green-400' :
+                                                req.status === 'Rejected' ? 'bg-red-500/20 text-red-400' :
+                                                'bg-blue-500/20 text-blue-400'
+                                            }">${req.status}</span>
+                                        </div>
+                                    </div>
+                                `).join('')
+                            }
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAddItem() {
+            return `
+                <div class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onclick="if(event.target===this){state.showAddItem=false;render()}">
+                    <div class="glass rounded-2xl w-full max-w-md border border-white/10">
+                        <div class="p-5 border-b border-white/10 flex items-center justify-between">
+                            <h2 class="text-xl font-bold">Suggest New Item</h2>
+                            <button onclick="state.showAddItem=false;render()" class="p-2 hover:bg-white/10 rounded-xl">✕</button>
+                        </div>
+                        
+                        <form id="addItemForm" class="p-5 space-y-4">
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-2">Item Name</label>
+                                <input type="text" id="itemName" placeholder="e.g., Croissant" required
+                                    class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white">
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-2">Category</label>
+                                <select id="itemCategory" class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white">
+                                    ${CATEGORIES.filter(c => c !== 'All').map(c => `<option value="${c}">${c}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-2">Suggested Point Cost</label>
+                                <input type="number" id="itemCost" placeholder="e.g., 10" required min="1"
+                                    class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white">
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-2">Description</label>
+                                <textarea id="itemDesc" placeholder="Brief description..." rows="2"
+                                    class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white resize-none"></textarea>
+                            </div>
+                            <button type="submit" class="w-full bg-nct-accent hover:bg-orange-600 py-3 rounded-xl font-bold transition-colors">
+                                Submit Suggestion
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderToast() {
+            const bgColor = state.toast.type === 'success' ? 'bg-nct-teal' : state.toast.type === 'error' ? 'bg-red-500' : 'bg-nct-accent';
+            return `
+                <div class="fixed top-4 right-4 ${bgColor} text-white px-6 py-4 rounded-xl shadow-2xl z-50 flex items-center gap-3">
+                    <span class="text-xl">${state.toast.type === 'success' ? '✓' : state.toast.type === 'error' ? '✕' : 'ℹ'}</span>
+                    <span>${state.toast.message}</span>
+                </div>
+            `;
+        }
+
+        // ============================================
+        // EVENT HANDLERS
+        // ============================================
+        
+        function attachEventListeners() {
+            // Login form
+            const loginForm = document.getElementById('loginForm');
+            if (loginForm) {
+                loginForm.onsubmit = async (e) => {
+                    e.preventDefault();
+                    await login();
+                };
+            }
+
+            // Search input
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) {
+                searchInput.oninput = (e) => {
+                    state.searchQuery = e.target.value;
+                    render();
+                };
+            }
+
+            // Add item form
+            const addItemForm = document.getElementById('addItemForm');
+            if (addItemForm) {
+                addItemForm.onsubmit = async (e) => {
+                    e.preventDefault();
+                    await addItem();
+                };
+            }
+        }
+
+        async function login() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            state.loading = true;
+            render();
+            
+            const result = await apiCall('login', { email, password });
+            
+            if (result.success) {
+                state.user = result.user;
+                localStorage.setItem('nctshop_user', JSON.stringify(result.user));
+                await loadItems();
+                await loadRequests();
+                showToast('Welcome back, ' + state.user.name + '!', 'success');
+            } else {
+                showToast(result.error || 'Login failed', 'error');
+            }
+            
+            state.loading = false;
+            render();
+        }
+
+        function logout() {
+            state.user = null;
+            state.items = [];
+            state.requests = [];
+            localStorage.removeItem('nctshop_user');
+            render();
+        }
+
+        async function loadItems() {
+            const result = await apiCall('getItems');
+            if (result.success) {
+                state.items = result.items.map(item => ({
+                    ...item,
+                    emoji: getEmoji(item.name, item.category)
+                }));
+            }
+        }
+
+        async function loadRequests() {
+            if (!state.user) return;
+            const result = await apiCall('getUserRequests', { userId: state.user.id });
+            if (result.success) {
+                state.requests = result.requests;
+            }
+        }
+
+        function setCategory(cat) {
+            state.selectedCategory = cat;
+            render();
+        }
+
+        async function orderItem(itemId) {
+            const item = state.items.find(i => i.id === itemId);
+            if (!item || state.user.pointsBalance < item.pointCost) return;
+            
+            const result = await apiCall('createRequest', null, {
+                userId: state.user.id,
+                itemId: item.id,
+                itemName: item.name,
+                pointsSpent: item.pointCost,
+                quantity: 1
+            });
+            
+            if (result.success) {
+                state.user.pointsBalance = result.newBalance !== undefined ? result.newBalance : state.user.pointsBalance - item.pointCost;
+                state.user.pointsUsed += item.pointCost;
+                localStorage.setItem('nctshop_user', JSON.stringify(state.user));
+                
+                state.requests.unshift({
+                    ...result.request,
+                    itemName: item.name,
+                    itemEmoji: item.emoji,
+                    dateRequested: new Date().toISOString()
+                });
+                
+                showToast(`${item.name} ordered! ✨`, 'success');
+                render();
+            } else {
+                showToast(result.error || 'Order failed', 'error');
+            }
+        }
+
+        async function addItem() {
+            const name = document.getElementById('itemName').value;
+            const category = document.getElementById('itemCategory').value;
+            const pointCost = parseInt(document.getElementById('itemCost').value);
+            const description = document.getElementById('itemDesc').value;
+            
+            const result = await apiCall('addItem', null, { name, category, pointCost, description });
+            
+            if (result.success) {
+                state.showAddItem = false;
+                showToast('Item suggested! Admin will review.', 'success');
+                await loadItems();
+                render();
+            } else {
+                showToast(result.error || 'Failed to add item', 'error');
+            }
+        }
+
+        function showToast(message, type = 'info') {
+            state.toast = { message, type };
+            render();
+            setTimeout(() => {
+                state.toast = null;
+                render();
+            }, 3000);
+        }
+
+        function getEmoji(name, category) {
+            const n = name.toLowerCase();
+            if (n.includes('pepsi') || n.includes('cola')) return '🥤';
+            if (n.includes('coffee')) return '☕';
+            if (n.includes('tea')) return '🍵';
+            if (n.includes('water')) return '💧';
+            if (n.includes('juice')) return '🧃';
+            if (n.includes('energy')) return '⚡';
+            if (n.includes('sandwich')) return '🥪';
+            if (n.includes('chip')) return '🍟';
+            if (n.includes('chocolate')) return '🍫';
+            if (n.includes('biscuit') || n.includes('cookie')) return '🍪';
+            if (n.includes('cake')) return '🍰';
+            if (category === 'Drinks') return '🥤';
+            if (category === 'Coffee & Tea') return '☕';
+            if (category === 'Snacks') return '🍿';
+            if (category === 'Meals') return '🍽️';
+            if (category === 'Desserts') return '🍬';
+            return '📦';
+        }
+
+        // ============================================
+        // INITIALIZE
+        // ============================================
+        
+        async function init() {
+            if (state.user) {
+                state.loading = true;
+                render();
+                await loadItems();
+                await loadRequests();
+                state.loading = false;
+            }
+            render();
+        }
+
+        init();
+    </script>
+</body>
+</html>
