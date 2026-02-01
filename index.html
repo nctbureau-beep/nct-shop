@@ -124,7 +124,45 @@
             'Desserts': 'bg-pink-500/20 text-pink-400 border-pink-500/30',
             'Other': 'bg-gray-500/20 text-gray-400 border-gray-500/30'
         };
-
+            async function apiCall(action, params = {}, postData = null) {
+    try {
+        let url = `${CONFIG.API_URL}?action=${action}`;
+        
+        Object.keys(params).forEach(key => {
+            url += `&${key}=${encodeURIComponent(params[key])}`;
+        });
+        
+        console.log('API Call:', action, params); // DEBUG
+        
+        const options = { 
+            method: postData ? 'POST' : 'GET',
+            redirect: 'follow'
+        };
+        
+        if (postData) {
+            options.body = JSON.stringify(postData);
+            options.headers = { 'Content-Type': 'application/json' };
+        }
+        
+        const response = await fetch(url, options);
+        const result = await response.json();
+        
+        console.log('API Response:', result); // DEBUG
+        
+        if (result.error) {
+            console.error('API Error:', result.error);
+            return result;
+        }
+        
+        return result;
+        
+    } catch (error) {
+        console.error('Network Error:', error);
+        alert('ERROR: ' + error.message); // DEBUG - Show error
+        showToast('Connection error. Please check your internet.', 'error');
+        return { success: false, error: error.message };
+    }
+}
         // ============================================
         // RENDER FUNCTIONS
         // ============================================
