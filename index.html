@@ -49,107 +49,53 @@
         // CONFIGURATION - UPDATE THIS!
         // ============================================
         const CONFIG = {
-            // Google Apps Script Web App URL
+            // IMPORTANT: Replace with your Google Apps Script Web App URL
             API_URL: 'https://script.google.com/macros/s/AKfycbyITdeDB8MeKsoWgzBue9boWICVfRBavrvtyMH3LpZ6J6MImz-kpKfNDQpnTS8XGDtCZQ/exec',
             
-            // Live mode - connected to Notion
-            DEMO_MODE: false
-        };
-
-        // Demo data for testing without backend
-        const DEMO_DATA = {
-            items: [
-                { id: '1', name: 'Pepsi', category: 'Drinks', pointCost: 5, description: 'Cold refreshing Pepsi', emoji: '🥤' },
-                { id: '2', name: 'Coffee', category: 'Coffee & Tea', pointCost: 8, description: 'Fresh brewed coffee', emoji: '☕' },
-                { id: '3', name: 'Tea', category: 'Coffee & Tea', pointCost: 4, description: 'Hot tea', emoji: '🍵' },
-                { id: '4', name: 'Sandwich', category: 'Meals', pointCost: 15, description: 'Fresh sandwich', emoji: '🥪' },
-                { id: '5', name: 'Chips', category: 'Snacks', pointCost: 6, description: 'Crispy chips', emoji: '🍟' },
-                { id: '6', name: 'Chocolate', category: 'Desserts', pointCost: 8, description: 'Chocolate bar', emoji: '🍫' },
-                { id: '7', name: 'Water', category: 'Drinks', pointCost: 3, description: 'Pure water', emoji: '💧' },
-                { id: '8', name: 'Energy Drink', category: 'Drinks', pointCost: 10, description: 'Energy boost', emoji: '⚡' },
-                { id: '9', name: 'Biscuits', category: 'Snacks', pointCost: 5, description: 'Assorted biscuits', emoji: '🍪' },
-                { id: '10', name: 'Juice', category: 'Drinks', pointCost: 6, description: 'Fresh juice', emoji: '🧃' },
-            ],
-            users: {
-                'hassan@nct.iq': { id: 'u1', name: 'Hassan', email: 'hassan@nct.iq', password: '123456', pointsBalance: 60, monthlyAllocation: 60, pointsUsed: 0 },
-                'ahmed@nct.iq': { id: 'u2', name: 'Ahmed', email: 'ahmed@nct.iq', password: '123456', pointsBalance: 45, monthlyAllocation: 60, pointsUsed: 15 },
-                'sara@nct.iq': { id: 'u3', name: 'Sara', email: 'sara@nct.iq', password: '123456', pointsBalance: 120, monthlyAllocation: 60, pointsUsed: 0 },
-            },
-            requests: []
+            // Session management keys
+            SESSION_TOKEN_KEY: 'nctshop_session',
+            USER_DATA_KEY: 'nctshop_user'
         };
 
         // ============================================
-        // API FUNCTIONS
+        // API FUNCTIONS - SECURE
         // ============================================
         
         async function apiCall(action, params = {}, postData = null) {
-            if (CONFIG.DEMO_MODE) {
-                return demoApiCall(action, params, postData);
+            try {
+                let url = `${CONFIG.API_URL}?action=${action}`;
+                
+                // Add all parameters to URL
+                Object.keys(params).forEach(key => {
+                    url += `&${key}=${encodeURIComponent(params[key])}`;
+                });
+                
+                const options = { 
+                    method: postData ? 'POST' : 'GET',
+                    redirect: 'follow'
+                };
+                
+                if (postData) {
+                    options.body = JSON.stringify(postData);
+                    options.headers = { 'Content-Type': 'application/json' };
+                }
+                
+                const response = await fetch(url, options);
+                const result = await response.json();
+                
+                // Handle API errors
+                if (result.error) {
+                    console.error('API Error:', result.error);
+                    return result;
+                }
+                
+                return result;
+                
+            } catch (error) {
+                console.error('Network Error:', error);
+                showToast('Connection error. Please check your internet.', 'error');
+                return { success: false, error: error.message };
             }
-            
-            let url = `${CONFIG.API_URL}?action=${action}`;
-            Object.keys(params).forEach(key => {
-                url += `&${key}=${encodeURIComponent(params[key])}`;
-            });
-            
-            const options = { method: postData ? 'POST' : 'GET' };
-            if (postData) {
-                options.body = JSON.stringify(postData);
-                options.headers = { 'Content-Type': 'application/json' };
-            }
-            
-            const response = await fetch(url, options);
-            return response.json();
-        }
-
-        function demoApiCall(action, params, postData) {
-            return new Promise(resolve => {
-                setTimeout(() => {
-                    switch(action) {
-                        case 'getItems':
-                            resolve({ success: true, items: DEMO_DATA.items });
-                            break;
-                        case 'login':
-                            const user = DEMO_DATA.users[params.email?.toLowerCase()];
-                            if (user && user.password === params.password) {
-                                resolve({ success: true, user: {...user, password: undefined} });
-                            } else {
-                                resolve({ success: false, error: 'Invalid email or password' });
-                            }
-                            break;
-                        case 'getUserRequests':
-                            const userRequests = DEMO_DATA.requests.filter(r => r.userId === params.userId);
-                            resolve({ success: true, requests: userRequests });
-                            break;
-                        case 'createRequest':
-                            const item = DEMO_DATA.items.find(i => i.id === postData.itemId);
-                            const newRequest = {
-                                id: 'r' + Date.now(),
-                                userId: postData.userId,
-                                itemId: postData.itemId,
-                                itemName: postData.itemName,
-                                itemEmoji: item?.emoji || '📦',
-                                status: 'Pending',
-                                pointsSpent: postData.pointsSpent,
-                                dateRequested: new Date().toISOString()
-                            };
-                            DEMO_DATA.requests.unshift(newRequest);
-                            
-                            // Update user balance in demo
-                            Object.values(DEMO_DATA.users).forEach(u => {
-                                if (u.id === postData.userId) {
-                                    u.pointsBalance -= postData.pointsSpent;
-                                    u.pointsUsed += postData.pointsSpent;
-                                }
-                            });
-                            
-                            resolve({ success: true, request: newRequest, newBalance: DEMO_DATA.users[Object.keys(DEMO_DATA.users).find(k => DEMO_DATA.users[k].id === postData.userId)]?.pointsBalance });
-                            break;
-                        default:
-                            resolve({ error: 'Unknown action' });
-                    }
-                }, 300);
-            });
         }
 
         // ============================================
@@ -157,7 +103,7 @@
         // ============================================
         
         let state = {
-            user: JSON.parse(localStorage.getItem('nctshop_user')) || null,
+            user: JSON.parse(localStorage.getItem(CONFIG.USER_DATA_KEY)) || null,
             items: [],
             requests: [],
             selectedCategory: 'All',
@@ -219,25 +165,30 @@
                         <form id="loginForm" class="space-y-4">
                             <div>
                                 <label class="block text-sm text-gray-400 mb-2">Email</label>
-                                <input type="email" id="loginEmail" placeholder="your.email@nct.iq" 
-                                    class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:border-nct-accent transition-colors"
-                                    value="hassan@nct.iq">
+                                <input type="email" id="loginEmail" placeholder="your.email@nct.iq" required
+                                    class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:border-nct-accent transition-colors">
                             </div>
                             <div>
                                 <label class="block text-sm text-gray-400 mb-2">Password</label>
-                                <input type="password" id="loginPassword" placeholder="••••••••"
-                                    class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:border-nct-accent transition-colors"
-                                    value="123456">
+                                <input type="password" id="loginPassword" placeholder="••••••••" required
+                                    class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:border-nct-accent transition-colors">
                             </div>
                             <button type="submit" id="loginBtn"
-                                class="w-full bg-nct-accent hover:bg-orange-600 text-white font-bold py-4 rounded-xl transition-colors mt-6">
-                                Sign In
+                                class="w-full bg-nct-accent hover:bg-orange-600 text-white font-bold py-4 rounded-xl transition-colors mt-6 disabled:opacity-50 disabled:cursor-not-allowed">
+                                <span id="loginBtnText">Sign In</span>
                             </button>
                         </form>
                         
                         <p class="text-center text-gray-500 text-sm mt-6">
-                            ${CONFIG.DEMO_MODE ? '🎮 Demo Mode - Try: hassan@nct.iq / 123456' : 'Contact admin for account access'}
+                            Contact your administrator for account access
                         </p>
+                        
+                        <div class="mt-4 bg-green-500/10 border border-green-500/30 rounded-xl p-3">
+                            <div class="flex items-center justify-center gap-2 text-green-400 text-sm">
+                                <span>🔒</span>
+                                <span>Secure Connection</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -422,7 +373,7 @@
                                         <div class="flex items-center gap-3">
                                             <span class="text-2xl">${req.itemEmoji || '📦'}</span>
                                             <div>
-                                                <p class="font-medium">${req.itemName}</p>
+                                                <p class="font-medium">${req.itemName || req.title}</p>
                                                 <p class="text-xs text-gray-500">${new Date(req.dateRequested).toLocaleDateString()}</p>
                                             </div>
                                         </div>
@@ -528,22 +479,52 @@
         }
 
         async function login() {
-            const email = document.getElementById('loginEmail').value;
+            const email = document.getElementById('loginEmail').value.trim();
             const password = document.getElementById('loginPassword').value;
+            
+            // Validate inputs
+            if (!email || !password) {
+                showToast('Please enter email and password', 'error');
+                return;
+            }
+            
+            // Email validation
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                showToast('Please enter a valid email address', 'error');
+                return;
+            }
+            
+            // Show loading state
+            const loginBtn = document.getElementById('loginBtn');
+            const loginBtnText = document.getElementById('loginBtnText');
+            if (loginBtn && loginBtnText) {
+                loginBtn.disabled = true;
+                loginBtnText.textContent = 'Signing in...';
+            }
             
             state.loading = true;
             render();
             
-            const result = await apiCall('login', { email, password });
-            
-            if (result.success) {
-                state.user = result.user;
-                localStorage.setItem('nctshop_user', JSON.stringify(result.user));
-                await loadItems();
-                await loadRequests();
-                showToast('Welcome back, ' + state.user.name + '!', 'success');
-            } else {
-                showToast(result.error || 'Login failed', 'error');
+            try {
+                const result = await apiCall('login', { email, password });
+                
+                if (result.success) {
+                    // Save user data securely
+                    state.user = result.user;
+                    localStorage.setItem(CONFIG.USER_DATA_KEY, JSON.stringify(result.user));
+                    
+                    // Load user data
+                    await loadItems();
+                    await loadRequests();
+                    
+                    showToast('Welcome back, ' + state.user.name + '! 🎉', 'success');
+                } else {
+                    showToast(result.error || 'Invalid email or password', 'error');
+                }
+            } catch (error) {
+                showToast('Login failed. Please try again.', 'error');
+                console.error('Login error:', error);
             }
             
             state.loading = false;
@@ -551,10 +532,21 @@
         }
 
         function logout() {
+            // Confirm logout
+            if (!confirm('Are you sure you want to logout?')) {
+                return;
+            }
+            
+            // Clear all data
             state.user = null;
             state.items = [];
             state.requests = [];
-            localStorage.removeItem('nctshop_user');
+            
+            // Clear localStorage
+            localStorage.removeItem(CONFIG.USER_DATA_KEY);
+            localStorage.removeItem(CONFIG.SESSION_TOKEN_KEY);
+            
+            showToast('Logged out successfully', 'info');
             render();
         }
 
@@ -583,7 +575,15 @@
 
         async function orderItem(itemId) {
             const item = state.items.find(i => i.id === itemId);
-            if (!item || state.user.pointsBalance < item.pointCost) return;
+            if (!item || state.user.pointsBalance < item.pointCost) {
+                showToast('Insufficient points for this item', 'error');
+                return;
+            }
+            
+            // Confirm order
+            if (!confirm(`Order ${item.name} for ${item.pointCost} points?`)) {
+                return;
+            }
             
             const result = await apiCall('createRequest', null, {
                 userId: state.user.id,
@@ -596,7 +596,7 @@
             if (result.success) {
                 state.user.pointsBalance = result.newBalance !== undefined ? result.newBalance : state.user.pointsBalance - item.pointCost;
                 state.user.pointsUsed += item.pointCost;
-                localStorage.setItem('nctshop_user', JSON.stringify(state.user));
+                localStorage.setItem(CONFIG.USER_DATA_KEY, JSON.stringify(state.user));
                 
                 state.requests.unshift({
                     ...result.request,
@@ -613,10 +613,15 @@
         }
 
         async function addItem() {
-            const name = document.getElementById('itemName').value;
+            const name = document.getElementById('itemName').value.trim();
             const category = document.getElementById('itemCategory').value;
             const pointCost = parseInt(document.getElementById('itemCost').value);
-            const description = document.getElementById('itemDesc').value;
+            const description = document.getElementById('itemDesc').value.trim();
+            
+            if (!name || !pointCost || pointCost < 1) {
+                showToast('Please fill in all required fields', 'error');
+                return;
+            }
             
             const result = await apiCall('addItem', null, { name, category, pointCost, description });
             
