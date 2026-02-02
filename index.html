@@ -57,47 +57,7 @@
             USER_DATA_KEY: 'nctshop_user'
         };
 
-        // ============================================
-        // API FUNCTIONS - SECURE
-        // ============================================
-        
-        async function apiCall(action, params = {}, postData = null) {
-            try {
-                let url = `${CONFIG.API_URL}?action=${action}`;
-                
-                // Add all parameters to URL
-                Object.keys(params).forEach(key => {
-                    url += `&${key}=${encodeURIComponent(params[key])}`;
-                });
-                
-                const options = { 
-                    method: postData ? 'POST' : 'GET',
-                    redirect: 'follow'
-                };
-                
-                if (postData) {
-                    options.body = JSON.stringify(postData);
-                    options.headers = { 'Content-Type': 'application/json' };
-                }
-                
-                const response = await fetch(url, options);
-                const result = await response.json();
-                
-                // Handle API errors
-                if (result.error) {
-                    console.error('API Error:', result.error);
-                    return result;
-                }
-                
-                return result;
-                
-            } catch (error) {
-                console.error('Network Error:', error);
-                showToast('Connection error. Please check your internet.', 'error');
-                return { success: false, error: error.message };
-            }
-        }
-
+    
         // ============================================
         // APP STATE
         // ============================================
