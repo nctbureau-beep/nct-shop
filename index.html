@@ -38,7 +38,8 @@
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
         .pulse { animation: pulse 2s ease-in-out infinite; }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
-        input:focus { outline: none; }
+        input:focus, select:focus, textarea:focus { outline: none; }
+        .item-image { width: 80px; height: 80px; object-fit: cover; border-radius: 12px; }
     </style>
 </head>
 <body class="bg-nct-bg min-h-screen text-white">
@@ -109,7 +110,8 @@
             toast: null,
             showHistory: false,
             showLogin: true,
-            showAddItem: false
+            showAddItem: false,
+            addingItem: false // Track if we're currently adding an item
         };
 
         const CATEGORIES = ['All', 'Drinks', 'Coffee & Tea', 'Snacks', 'Meals', 'Desserts'];
@@ -318,13 +320,18 @@
             const canAfford = state.user.pointsBalance >= item.pointCost;
             const colorClass = CATEGORY_COLORS[item.category] || CATEGORY_COLORS['Other'];
             
+            // Use image if available, otherwise use emoji
+            const imageDisplay = item.imageUrl 
+                ? `<img src="${item.imageUrl}" alt="${item.name}" class="item-image mb-3">`
+                : `<div class="text-5xl mb-3 float">${item.emoji || '📦'}</div>`;
+            
             return `
                 <div class="bg-nct-card rounded-2xl p-5 border border-white/10 card-hover relative overflow-hidden">
                     <div class="absolute top-3 right-3">
                         <span class="text-xs px-2 py-1 rounded-full border ${colorClass}">${item.category}</span>
                     </div>
                     
-                    <div class="text-5xl mb-3 float">${item.emoji || '📦'}</div>
+                    ${imageDisplay}
                     
                     <h3 class="font-bold text-lg mb-1">${item.name}</h3>
                     <p class="text-gray-500 text-sm mb-4 line-clamp-2">${item.description}</p>
@@ -399,10 +406,10 @@
                             <button onclick="state.showAddItem=false;render()" class="p-2 hover:bg-white/10 rounded-xl">✕</button>
                         </div>
                         
-                        <form id="addItemForm" class="p-5 space-y-4">
+                        <div class="p-5 space-y-4">
                             <div>
-                                <label class="block text-sm text-gray-400 mb-2">Item Name</label>
-                                <input type="text" id="itemName" placeholder="e.g., Croissant" required
+                                <label class="block text-sm text-gray-400 mb-2">Item Name *</label>
+                                <input type="text" id="itemName" placeholder="e.g., Croissant"
                                     class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white">
                             </div>
                             <div>
@@ -412,8 +419,8 @@
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-sm text-gray-400 mb-2">Suggested Point Cost</label>
-                                <input type="number" id="itemCost" placeholder="e.g., 10" required min="1"
+                                <label class="block text-sm text-gray-400 mb-2">Suggested Point Cost *</label>
+                                <input type="number" id="itemCost" placeholder="e.g., 10" min="1"
                                     class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white">
                             </div>
                             <div>
@@ -421,10 +428,12 @@
                                 <textarea id="itemDesc" placeholder="Brief description..." rows="2"
                                     class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white resize-none"></textarea>
                             </div>
-                            <button type="submit" class="w-full bg-nct-accent hover:bg-orange-600 py-3 rounded-xl font-bold transition-colors">
-                                Submit Suggestion
+                            <button type="button" id="submitItemBtn" onclick="addItem()"
+                                class="w-full bg-nct-accent hover:bg-orange-600 py-3 rounded-xl font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                ${state.addingItem ? 'disabled' : ''}>
+                                ${state.addingItem ? 'Submitting...' : 'Submit Suggestion'}
                             </button>
-                        </form>
+                        </div>
                     </div>
                 </div>
             `;
@@ -458,14 +467,6 @@
                 searchInput.oninput = (e) => {
                     state.searchQuery = e.target.value;
                     render();
-                };
-            }
-
-            const addItemForm = document.getElementById('addItemForm');
-            if (addItemForm) {
-                addItemForm.onsubmit = async (e) => {
-                    e.preventDefault();
-                    await addItem();
                 };
             }
         }
@@ -550,10 +551,12 @@
             
             showToast('Placing order...', 'info');
             
+            // FIX: Include pointsSpent in the request!
             const result = await apiCall('createRequest', null, {
                 userId: state.user.id,
                 itemId: item.id,
                 itemName: item.name,
+                pointsSpent: item.pointCost,  // THIS WAS MISSING!
                 quantity: 1
             });
             
@@ -590,21 +593,45 @@
             render();
         }
 
+        // FIX: Rewritten addItem function without form dependency
         async function addItem() {
-            const name = document.getElementById('itemName').value;
-            const category = document.getElementById('itemCategory').value;
-            const pointCost = parseInt(document.getElementById('itemCost').value);
-            const description = document.getElementById('itemDesc').value;
+            const nameInput = document.getElementById('itemName');
+            const categoryInput = document.getElementById('itemCategory');
+            const costInput = document.getElementById('itemCost');
+            const descInput = document.getElementById('itemDesc');
+            
+            const name = nameInput?.value?.trim();
+            const category = categoryInput?.value;
+            const pointCost = parseInt(costInput?.value);
+            const description = descInput?.value?.trim() || '';
+            
+            // Validate
+            if (!name) {
+                showToast('Please enter item name', 'error');
+                return;
+            }
+            if (!pointCost || pointCost < 1) {
+                showToast('Please enter a valid point cost', 'error');
+                return;
+            }
+            
+            state.addingItem = true;
+            render();
             
             const result = await apiCall('addItem', null, { name, category, pointCost, description });
+            
+            state.addingItem = false;
             
             if (result.success) {
                 state.showAddItem = false;
                 showToast('Item suggested! Admin will review.', 'success');
-                render();
+                // Reload items to show the new one (if immediately available)
+                await loadItems();
             } else {
                 showToast(result.error || 'Failed to add item', 'error');
             }
+            
+            render();
         }
 
         function showToast(message, type = 'info') {
