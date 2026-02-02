@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NCT Shop</title>
+    <title>NCT Shop - Fixed</title>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -50,49 +50,79 @@
         // CONFIGURATION
         // ============================================
         const CONFIG = {
-            // Your Google Apps Script Web App URL
+            // REPLACE THIS WITH YOUR ACTUAL WEB APP URL!
             API_URL: 'https://script.google.com/macros/s/AKfycbyITdeDB8MeKsoWgzBue9boWICVfRBavrvtyMH3LpZ6J6MImz-kpKfNDQpnTS8XGDtCZQ/exec',
             DEMO_MODE: false
         };
 
         // ============================================
-        // API FUNCTIONS
+        // API FUNCTIONS (FIXED)
         // ============================================
         
         async function apiCall(action, params = {}, postData = null) {
+            console.log('🔵 API Call Starting:', { action, params, postData });
+            
             if (CONFIG.DEMO_MODE) {
                 return demoApiCall(action, params, postData);
             }
             
-            let url = `${CONFIG.API_URL}?action=${action}`;
-            Object.keys(params).forEach(key => {
-                url += `&${key}=${encodeURIComponent(params[key])}`;
-            });
-            
-            console.log('API Call:', action, params, postData);
-            
-            const options = { 
-                method: postData ? 'POST' : 'GET',
-                redirect: 'follow'
-            };
-            if (postData) {
-                options.body = JSON.stringify(postData);
-                options.headers = { 'Content-Type': 'text/plain' };
-            }
-            
             try {
+                let url = `${CONFIG.API_URL}?action=${action}`;
+                
+                // Add GET parameters
+                Object.keys(params).forEach(key => {
+                    if (params[key] !== null && params[key] !== undefined) {
+                        url += `&${key}=${encodeURIComponent(params[key])}`;
+                    }
+                });
+                
+                console.log('📤 Request URL:', url);
+                
+                const options = { 
+                    method: postData ? 'POST' : 'GET',
+                    redirect: 'follow',
+                    mode: 'cors'
+                };
+                
+                if (postData) {
+                    // Apps Script expects plain text, not JSON Content-Type
+                    options.body = JSON.stringify(postData);
+                    console.log('📦 POST Body:', postData);
+                }
+                
                 const response = await fetch(url, options);
-                const result = await response.json();
-                console.log('API Response:', result);
+                console.log('📥 Response Status:', response.status, response.statusText);
+                
+                const text = await response.text();
+                console.log('📄 Response Text:', text.substring(0, 500));
+                
+                let result;
+                try {
+                    result = JSON.parse(text);
+                } catch (parseError) {
+                    console.error('❌ JSON Parse Error:', parseError);
+                    console.error('Raw response:', text);
+                    return { 
+                        success: false, 
+                        error: 'Invalid JSON response from server',
+                        raw: text.substring(0, 200)
+                    };
+                }
+                
+                console.log('✅ Parsed Result:', result);
                 
                 if (result.error) {
-                    console.error('API Error:', result.error);
+                    console.error('⚠️ API Error:', result.error);
                 }
                 
                 return result;
+                
             } catch (error) {
-                console.error('Fetch Error:', error);
-                return { success: false, error: error.message };
+                console.error('❌ Fetch Error:', error);
+                return { 
+                    success: false, 
+                    error: error.message || 'Network error'
+                };
             }
         }
 
@@ -111,7 +141,7 @@
             showHistory: false,
             showLogin: true,
             showAddItem: false,
-            addingItem: false // Track if we're currently adding an item
+            addingItem: false
         };
 
         const CATEGORIES = ['All', 'Drinks', 'Coffee & Tea', 'Snacks', 'Meals', 'Desserts'];
@@ -306,7 +336,16 @@
             }
 
             if (filtered.length === 0) {
-                return `<div class="text-center py-20"><div class="text-4xl">📭</div><p class="text-gray-400 mt-4">No items found</p></div>`;
+                return `
+                    <div class="text-center py-20">
+                        <div class="text-4xl mb-4">📭</div>
+                        <p class="text-gray-400">No items found</p>
+                        <p class="text-sm text-gray-500 mt-2">Total items loaded: ${state.items.length}</p>
+                        <button onclick="loadItems()" class="mt-4 px-4 py-2 bg-nct-accent rounded-xl text-sm">
+                            🔄 Retry Loading
+                        </button>
+                    </div>
+                `;
             }
 
             return `
@@ -322,8 +361,10 @@
             
             // Use image if available, otherwise use emoji
             const imageDisplay = item.imageUrl 
-                ? `<img src="${item.imageUrl}" alt="${item.name}" class="item-image mb-3">`
+                ? `<img src="${item.imageUrl}" alt="${item.name}" class="item-image mb-3" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">`
                 : `<div class="text-5xl mb-3 float">${item.emoji || '📦'}</div>`;
+            
+            const fallbackEmoji = `<div class="text-5xl mb-3 float" style="display:${item.imageUrl ? 'none' : 'block'}">${item.emoji || '📦'}</div>`;
             
             return `
                 <div class="bg-nct-card rounded-2xl p-5 border border-white/10 card-hover relative overflow-hidden">
@@ -332,6 +373,7 @@
                     </div>
                     
                     ${imageDisplay}
+                    ${item.imageUrl ? fallbackEmoji : ''}
                     
                     <h3 class="font-bold text-lg mb-1">${item.name}</h3>
                     <p class="text-gray-500 text-sm mb-4 line-clamp-2">${item.description}</p>
@@ -375,12 +417,12 @@
                                         <div class="flex items-center gap-3">
                                             <span class="text-2xl">${req.itemEmoji || '📦'}</span>
                                             <div>
-                                                <p class="font-medium">${req.itemName || req.title}</p>
-                                                <p class="text-xs text-gray-500">${new Date(req.dateRequested).toLocaleDateString()}</p>
+                                                <p class="font-medium">${req.title}</p>
+                                                <p class="text-xs text-gray-500">${req.dateRequested ? new Date(req.dateRequested).toLocaleDateString() : 'N/A'}</p>
                                             </div>
                                         </div>
                                         <div class="text-right">
-                                            <p class="font-mono font-bold text-nct-accent">${req.totalCost || req.pointsSpent} pts</p>
+                                            <p class="font-mono font-bold text-nct-accent">${req.pointsSpent} pts</p>
                                             <span class="text-xs px-2 py-1 rounded-full ${
                                                 req.status === 'Pending' ? 'bg-yellow-500/20 text-yellow-400' :
                                                 req.status === 'Approved' ? 'bg-green-500/20 text-green-400' :
@@ -416,6 +458,7 @@
                                 <label class="block text-sm text-gray-400 mb-2">Category</label>
                                 <select id="itemCategory" class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white">
                                     ${CATEGORIES.filter(c => c !== 'All').map(c => `<option value="${c}">${c}</option>`).join('')}
+                                    <option value="Other">Other</option>
                                 </select>
                             </div>
                             <div>
@@ -472,22 +515,27 @@
         }
 
         async function login() {
-            const email = document.getElementById('loginEmail').value;
+            const email = document.getElementById('loginEmail').value.trim();
             const password = document.getElementById('loginPassword').value;
+            
+            if (!email || !password) {
+                showToast('Please enter email and password', 'error');
+                return;
+            }
             
             state.loading = true;
             render();
             
             const result = await apiCall('login', { email, password });
             
-            if (result.success) {
+            if (result.success && result.user) {
                 state.user = result.user;
                 localStorage.setItem('nctshop_user', JSON.stringify(result.user));
+                showToast('Welcome back, ' + state.user.name + '!', 'success');
                 await loadItems();
                 await loadRequests();
-                showToast('Welcome back, ' + state.user.name + '!', 'success');
             } else {
-                showToast(result.error || 'Login failed', 'error');
+                showToast(result.error || 'Login failed. Check console for details.', 'error');
             }
             
             state.loading = false;
@@ -499,6 +547,7 @@
             state.items = [];
             state.requests = [];
             localStorage.removeItem('nctshop_user');
+            showToast('Logged out successfully', 'info');
             render();
         }
 
@@ -508,32 +557,54 @@
             showToast('Refreshing...', 'info');
             const result = await apiCall('getUser', { userId: state.user.id });
             
-            if (result.success) {
+            if (result.success && result.user) {
                 state.user = result.user;
                 localStorage.setItem('nctshop_user', JSON.stringify(result.user));
                 showToast('Points updated!', 'success');
+            } else {
+                showToast('Failed to refresh user data', 'error');
             }
             render();
         }
 
         async function loadItems() {
+            console.log('🔄 Loading items...');
+            state.loading = true;
+            render();
+            
             const result = await apiCall('getItems');
-            if (result.success) {
+            
+            if (result.success && result.items) {
                 state.items = result.items.map(item => ({
                     ...item,
                     emoji: getEmoji(item.name, item.category)
                 }));
+                console.log('✅ Items loaded:', state.items.length);
+            } else {
+                console.error('❌ Failed to load items:', result.error);
+                showToast('Failed to load items: ' + (result.error || 'Unknown error'), 'error');
+                state.items = [];
             }
+            
+            state.loading = false;
+            render();
         }
 
         async function loadRequests() {
             if (!state.user) return;
+            
+            console.log('🔄 Loading requests...');
             const result = await apiCall('getUserRequests', { userId: state.user.id });
-            if (result.success) {
+            
+            if (result.success && result.requests) {
                 state.requests = result.requests.map(req => ({
                     ...req,
                     itemEmoji: getEmoji(req.title, '')
                 }));
+                console.log('✅ Requests loaded:', state.requests.length);
+            } else {
+                console.error('❌ Failed to load requests:', result.error);
+                state.requests = [];
             }
         }
 
@@ -544,56 +615,53 @@
 
         async function orderItem(itemId) {
             const item = state.items.find(i => i.id === itemId);
-            if (!item || state.user.pointsBalance < item.pointCost) {
-                showToast('Not enough points!', 'error');
+            if (!item) {
+                showToast('Item not found!', 'error');
+                return;
+            }
+            
+            if (state.user.pointsBalance < item.pointCost) {
+                showToast(`Not enough points! Need ${item.pointCost}, have ${state.user.pointsBalance}`, 'error');
+                return;
+            }
+            
+            if (!confirm(`Order ${item.name} for ${item.pointCost} points?`)) {
                 return;
             }
             
             showToast('Placing order...', 'info');
             
-            // FIX: Include pointsSpent in the request!
-            const result = await apiCall('createRequest', null, {
+            const result = await apiCall('createRequest', {}, {
                 userId: state.user.id,
                 itemId: item.id,
                 itemName: item.name,
-                pointsSpent: item.pointCost,  // THIS WAS MISSING!
+                pointsSpent: item.pointCost,
                 quantity: 1
             });
             
             if (result.success) {
-                // Update user balance from API response
+                // Update user balance
                 if (result.newBalance !== undefined) {
                     state.user.pointsBalance = result.newBalance;
                 } else {
-                    // Fallback: calculate locally
                     state.user.pointsBalance -= item.pointCost;
                 }
                 state.user.pointsUsed += item.pointCost;
                 localStorage.setItem('nctshop_user', JSON.stringify(state.user));
                 
-                // Add to requests list
-                state.requests.unshift({
-                    ...result.request,
-                    itemName: item.name,
-                    itemEmoji: item.emoji,
-                    dateRequested: new Date().toISOString()
-                });
+                showToast(`${item.name} ordered successfully! ✨`, 'success');
                 
-                showToast(`${item.name} ordered! ✨`, 'success');
-                
-                // Refresh user data after a short delay (to let Notion formulas recalculate)
-                setTimeout(async () => {
-                    await refreshUserData();
-                }, 1500);
+                // Reload requests and user data
+                await loadRequests();
+                setTimeout(() => refreshUserData(), 1000);
                 
             } else {
-                showToast(result.error || 'Order failed', 'error');
+                showToast(result.error || 'Order failed. Check console.', 'error');
             }
             
             render();
         }
 
-        // FIX: Rewritten addItem function without form dependency
         async function addItem() {
             const nameInput = document.getElementById('itemName');
             const categoryInput = document.getElementById('itemCategory');
@@ -605,30 +673,33 @@
             const pointCost = parseInt(costInput?.value);
             const description = descInput?.value?.trim() || '';
             
-            // Validate
             if (!name) {
                 showToast('Please enter item name', 'error');
                 return;
             }
             if (!pointCost || pointCost < 1) {
-                showToast('Please enter a valid point cost', 'error');
+                showToast('Please enter a valid point cost (minimum 1)', 'error');
                 return;
             }
             
             state.addingItem = true;
             render();
             
-            const result = await apiCall('addItem', null, { name, category, pointCost, description });
+            const result = await apiCall('addItem', {}, { 
+                name, 
+                category, 
+                pointCost, 
+                description 
+            });
             
             state.addingItem = false;
             
             if (result.success) {
                 state.showAddItem = false;
-                showToast('Item suggested! Admin will review.', 'success');
-                // Reload items to show the new one (if immediately available)
+                showToast('Item suggestion submitted! Admin will review.', 'success');
                 await loadItems();
             } else {
-                showToast(result.error || 'Failed to add item', 'error');
+                showToast(result.error || 'Failed to add item. Check console.', 'error');
             }
             
             render();
@@ -669,18 +740,23 @@
         // ============================================
         
         async function init() {
+            console.log('🚀 NCT Shop Initializing...');
+            console.log('📍 API URL:', CONFIG.API_URL);
+            console.log('👤 Saved user:', state.user ? state.user.name : 'None');
+            
             if (state.user) {
                 state.loading = true;
                 render();
                 await loadItems();
                 await loadRequests();
-                // Refresh user data to get latest formula values
                 await refreshUserData();
                 state.loading = false;
             }
             render();
+            console.log('✅ Initialization complete');
         }
 
+        // Start the app
         init();
     </script>
 </body>
