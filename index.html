@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NCT Shop - Fixed</title>
+    <title>NCT Shop</title>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -20,6 +20,7 @@
                             'card': '#1E293B',
                             'accent': '#F97316',
                             'teal': '#14B8A6',
+                            'purple': '#8B5CF6',
                             'surface': '#334155',
                         }
                     }
@@ -31,6 +32,8 @@
         * { font-family: 'IBM Plex Sans Arabic', sans-serif; }
         .glass { background: rgba(30, 41, 59, 0.8); backdrop-filter: blur(12px); }
         .glow { box-shadow: 0 0 40px rgba(249, 115, 22, 0.3); }
+        .glow-teal { box-shadow: 0 0 40px rgba(20, 184, 166, 0.3); }
+        .glow-purple { box-shadow: 0 0 40px rgba(139, 92, 246, 0.3); }
         .card-hover { transition: all 0.3s ease; }
         .card-hover:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,0.4); }
         @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
@@ -40,6 +43,8 @@
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         input:focus, select:focus, textarea:focus { outline: none; }
         .item-image { width: 80px; height: 80px; object-fit: cover; border-radius: 12px; }
+        .progress-bar { background: linear-gradient(90deg, #14B8A6, #10B981); }
+        .tab-active { border-bottom: 3px solid #F97316; color: #F97316; }
     </style>
 </head>
 <body class="bg-nct-bg min-h-screen text-white">
@@ -50,33 +55,25 @@
         // CONFIGURATION
         // ============================================
         const CONFIG = {
-            // REPLACE THIS WITH YOUR ACTUAL WEB APP URL!
             API_URL: 'https://script.google.com/macros/s/AKfycbyITdeDB8MeKsoWgzBue9boWICVfRBavrvtyMH3LpZ6J6MImz-kpKfNDQpnTS8XGDtCZQ/exec',
             DEMO_MODE: false
         };
 
         // ============================================
-        // API FUNCTIONS (FIXED)
+        // API FUNCTIONS
         // ============================================
         
         async function apiCall(action, params = {}, postData = null) {
-            console.log('🔵 API Call Starting:', { action, params, postData });
-            
-            if (CONFIG.DEMO_MODE) {
-                return demoApiCall(action, params, postData);
-            }
+            console.log('🔵 API Call:', { action, params, postData });
             
             try {
                 let url = `${CONFIG.API_URL}?action=${action}`;
                 
-                // Add GET parameters
                 Object.keys(params).forEach(key => {
                     if (params[key] !== null && params[key] !== undefined) {
                         url += `&${key}=${encodeURIComponent(params[key])}`;
                     }
                 });
-                
-                console.log('📤 Request URL:', url);
                 
                 const options = { 
                     method: postData ? 'POST' : 'GET',
@@ -85,44 +82,26 @@
                 };
                 
                 if (postData) {
-                    // Apps Script expects plain text, not JSON Content-Type
                     options.body = JSON.stringify(postData);
-                    console.log('📦 POST Body:', postData);
                 }
                 
                 const response = await fetch(url, options);
-                console.log('📥 Response Status:', response.status, response.statusText);
-                
                 const text = await response.text();
-                console.log('📄 Response Text:', text.substring(0, 500));
                 
                 let result;
                 try {
                     result = JSON.parse(text);
                 } catch (parseError) {
                     console.error('❌ JSON Parse Error:', parseError);
-                    console.error('Raw response:', text);
-                    return { 
-                        success: false, 
-                        error: 'Invalid JSON response from server',
-                        raw: text.substring(0, 200)
-                    };
+                    return { success: false, error: 'Invalid response from server' };
                 }
                 
-                console.log('✅ Parsed Result:', result);
-                
-                if (result.error) {
-                    console.error('⚠️ API Error:', result.error);
-                }
-                
+                console.log('✅ Result:', result);
                 return result;
                 
             } catch (error) {
                 console.error('❌ Fetch Error:', error);
-                return { 
-                    success: false, 
-                    error: error.message || 'Network error'
-                };
+                return { success: false, error: error.message || 'Network error' };
             }
         }
 
@@ -134,17 +113,24 @@
             user: JSON.parse(localStorage.getItem('nctshop_user')) || null,
             items: [],
             requests: [],
+            allUsers: [],
             selectedCategory: 'All',
+            selectedItemType: 'All',
             searchQuery: '',
             loading: false,
             toast: null,
             showHistory: false,
-            showLogin: true,
             showAddItem: false,
+            showContribute: null,
+            showCommunalPurchase: null,
+            showContributors: null,
+            contributionAmount: 5,
             addingItem: false
         };
 
-        const CATEGORIES = ['All', 'Drinks', 'Coffee & Tea', 'Snacks', 'Meals', 'Desserts'];
+        const CATEGORIES = ['All', 'Drinks', 'Coffee & Tea', 'Snacks', 'Meals', 'Desserts', 'Other'];
+        const ITEM_TYPES = ['All', 'Individual', 'Shared', 'Communal'];
+        
         const CATEGORY_COLORS = {
             'Drinks': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
             'Coffee & Tea': 'bg-amber-500/20 text-amber-400 border-amber-500/30',
@@ -152,6 +138,12 @@
             'Meals': 'bg-green-500/20 text-green-400 border-green-500/30',
             'Desserts': 'bg-pink-500/20 text-pink-400 border-pink-500/30',
             'Other': 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+        };
+
+        const TYPE_BADGES = {
+            'Individual': { class: 'bg-blue-500/20 text-blue-400 border-blue-500/30', icon: '🛒', label: 'Individual' },
+            'Shared': { class: 'bg-purple-500/20 text-purple-400 border-purple-500/30', icon: '🤝', label: 'Crowdfund' },
+            'Communal': { class: 'bg-teal-500/20 text-teal-400 border-teal-500/30', icon: '🏢', label: 'Communal' }
         };
 
         // ============================================
@@ -169,11 +161,15 @@
                     <main class="max-w-7xl mx-auto px-4 py-6">
                         ${renderStats()}
                         ${renderControls()}
+                        ${renderItemTypeTabs()}
                         ${renderCategories()}
                         ${renderItems()}
                     </main>
                     ${state.showHistory ? renderHistory() : ''}
                     ${state.showAddItem ? renderAddItem() : ''}
+                    ${state.showContribute ? renderContributeModal() : ''}
+                    ${state.showCommunalPurchase ? renderCommunalPurchaseModal() : ''}
+                    ${state.showContributors ? renderContributorsModal() : ''}
                     ${state.toast ? renderToast() : ''}
                 `;
             }
@@ -227,7 +223,10 @@
                                 </div>
                                 <div>
                                     <h1 class="text-xl font-bold">NCT Shop</h1>
-                                    <p class="text-xs text-gray-400">Welcome, ${state.user.name}</p>
+                                    <p class="text-xs text-gray-400">
+                                        ${state.user.name}
+                                        ${state.user.isAdmin ? '<span class="ml-1 px-1.5 py-0.5 bg-nct-accent/20 text-nct-accent rounded text-xs">Admin</span>' : ''}
+                                    </p>
                                 </div>
                             </div>
                             
@@ -235,7 +234,7 @@
                                 <button onclick="refreshUserData()" class="p-2 hover:bg-white/10 rounded-xl transition-colors" title="Refresh Points">
                                     🔄
                                 </button>
-                                <div class="bg-gradient-to-r from-nct-teal to-emerald-500 px-5 py-2 rounded-xl">
+                                <div class="bg-gradient-to-r ${state.user.pointsBalance >= 0 ? 'from-nct-teal to-emerald-500' : 'from-red-500 to-red-600'} px-5 py-2 rounded-xl">
                                     <div class="flex items-center gap-2">
                                         <span>💎</span>
                                         <span class="font-mono font-bold text-lg">${state.user.pointsBalance}</span>
@@ -253,9 +252,7 @@
         }
 
         function renderStats() {
-            const percentUsed = state.user.monthlyAllocation > 0 
-                ? (state.user.pointsUsed / state.user.monthlyAllocation) * 100 
-                : 0;
+            const balanceColor = state.user.pointsBalance >= 0 ? 'text-nct-teal' : 'text-red-400';
             return `
                 <div class="glass rounded-2xl p-6 mb-6 border border-white/10 relative overflow-hidden">
                     <div class="absolute -right-16 -top-16 w-48 h-48 bg-nct-accent/20 rounded-full blur-3xl"></div>
@@ -263,9 +260,9 @@
                     
                     <div class="relative grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div class="bg-white/5 rounded-xl p-4">
-                            <p class="text-gray-400 text-sm">Available</p>
-                            <p class="text-3xl font-bold font-mono text-nct-teal">${state.user.pointsBalance}</p>
-                            <p class="text-xs text-gray-500">points</p>
+                            <p class="text-gray-400 text-sm">Balance</p>
+                            <p class="text-3xl font-bold font-mono ${balanceColor}">${state.user.pointsBalance}</p>
+                            <p class="text-xs text-gray-500">${state.user.pointsBalance >= 0 ? 'points available' : 'in debt'}</p>
                         </div>
                         <div class="bg-white/5 rounded-xl p-4">
                             <p class="text-gray-400 text-sm">Used This Month</p>
@@ -275,7 +272,7 @@
                         <div class="bg-white/5 rounded-xl p-4">
                             <p class="text-gray-400 text-sm">Monthly Add</p>
                             <p class="text-3xl font-bold font-mono text-nct-accent">+${state.user.monthlyAllocation}</p>
-                            <p class="text-xs text-gray-500">on 1st</p>
+                            <p class="text-xs text-gray-500">on 1st (rollover)</p>
                         </div>
                         <div class="bg-white/5 rounded-xl p-4">
                             <p class="text-gray-400 text-sm">IQD Value</p>
@@ -307,6 +304,28 @@
             `;
         }
 
+        function renderItemTypeTabs() {
+            return `
+                <div class="flex gap-1 mb-4 bg-nct-card rounded-xl p-1">
+                    ${ITEM_TYPES.map(type => {
+                        const isActive = state.selectedItemType === type;
+                        const badge = TYPE_BADGES[type];
+                        return `
+                            <button onclick="setItemType('${type}')"
+                                class="flex-1 px-4 py-2.5 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${
+                                    isActive 
+                                        ? 'bg-white/10 text-white' 
+                                        : 'text-gray-400 hover:text-white'
+                                }">
+                                ${badge ? `<span>${badge.icon}</span>` : ''}
+                                ${type === 'All' ? '📦 All' : badge?.label || type}
+                            </button>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        }
+
         function renderCategories() {
             return `
                 <div class="flex gap-2 overflow-x-auto scrollbar-hide pb-4">
@@ -327,8 +346,9 @@
         function renderItems() {
             const filtered = state.items.filter(item => {
                 const matchesCat = state.selectedCategory === 'All' || item.category === state.selectedCategory;
+                const matchesType = state.selectedItemType === 'All' || item.itemType === state.selectedItemType;
                 const matchesSearch = item.name.toLowerCase().includes(state.searchQuery.toLowerCase());
-                return matchesCat && matchesSearch;
+                return matchesCat && matchesType && matchesSearch;
             });
 
             if (state.loading) {
@@ -340,7 +360,6 @@
                     <div class="text-center py-20">
                         <div class="text-4xl mb-4">📭</div>
                         <p class="text-gray-400">No items found</p>
-                        <p class="text-sm text-gray-500 mt-2">Total items loaded: ${state.items.length}</p>
                         <button onclick="loadItems()" class="mt-4 px-4 py-2 bg-nct-accent rounded-xl text-sm">
                             🔄 Retry Loading
                         </button>
@@ -349,62 +368,185 @@
             }
 
             return `
-                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mt-6">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-6">
                     ${filtered.map(item => renderItemCard(item)).join('')}
                 </div>
             `;
         }
 
         function renderItemCard(item) {
-            const canAfford = state.user.pointsBalance >= item.pointCost;
+            const typeBadge = TYPE_BADGES[item.itemType] || TYPE_BADGES['Individual'];
             const colorClass = CATEGORY_COLORS[item.category] || CATEGORY_COLORS['Other'];
             
-            // Use image if available, otherwise use emoji
             const imageDisplay = item.imageUrl 
-                ? `<img src="${item.imageUrl}" alt="${item.name}" class="item-image mb-3" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">`
-                : `<div class="text-5xl mb-3 float">${item.emoji || '📦'}</div>`;
+                ? `<img src="${item.imageUrl}" alt="${item.name}" class="item-image" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+                : '';
             
-            const fallbackEmoji = `<div class="text-5xl mb-3 float" style="display:${item.imageUrl ? 'none' : 'block'}">${item.emoji || '📦'}</div>`;
+            const fallbackEmoji = `<div class="w-20 h-20 rounded-xl bg-white/5 flex items-center justify-center text-4xl" style="display:${item.imageUrl ? 'none' : 'flex'}">${getEmoji(item.name, item.category)}</div>`;
             
+            // Different rendering based on item type
+            if (item.itemType === 'Shared') {
+                return renderSharedItemCard(item, typeBadge, colorClass, imageDisplay, fallbackEmoji);
+            } else if (item.itemType === 'Communal') {
+                return renderCommunalItemCard(item, typeBadge, colorClass, imageDisplay, fallbackEmoji);
+            } else {
+                return renderIndividualItemCard(item, typeBadge, colorClass, imageDisplay, fallbackEmoji);
+            }
+        }
+
+        function renderIndividualItemCard(item, typeBadge, colorClass, imageDisplay, fallbackEmoji) {
             return `
                 <div class="bg-nct-card rounded-2xl p-5 border border-white/10 card-hover relative overflow-hidden">
-                    <div class="absolute top-3 right-3">
+                    <div class="absolute top-3 right-3 flex gap-2">
+                        <span class="text-xs px-2 py-1 rounded-full border ${typeBadge.class}">${typeBadge.icon}</span>
                         <span class="text-xs px-2 py-1 rounded-full border ${colorClass}">${item.category}</span>
                     </div>
                     
-                    ${imageDisplay}
-                    ${item.imageUrl ? fallbackEmoji : ''}
+                    <div class="flex items-start gap-4 mt-6">
+                        ${imageDisplay}
+                        ${fallbackEmoji}
+                        <div class="flex-1 min-w-0">
+                            <h3 class="font-bold text-lg truncate">${item.name}</h3>
+                            <p class="text-gray-500 text-sm line-clamp-2">${item.description || 'No description'}</p>
+                        </div>
+                    </div>
                     
-                    <h3 class="font-bold text-lg mb-1">${item.name}</h3>
-                    <p class="text-gray-500 text-sm mb-4 line-clamp-2">${item.description}</p>
-                    
-                    <div class="flex items-center justify-between">
+                    <div class="flex items-center justify-between mt-4 pt-4 border-t border-white/5">
                         <div>
                             <span class="text-2xl font-bold font-mono text-nct-accent">${item.pointCost}</span>
                             <span class="text-gray-400 text-sm"> pts</span>
                             <p class="text-xs text-gray-600">${(item.pointCost * 250).toLocaleString()} IQD</p>
                         </div>
                         <button onclick="orderItem('${item.id}')" 
-                            class="px-4 py-2 rounded-xl font-bold text-sm transition-all ${
-                                canAfford 
-                                    ? 'bg-nct-accent hover:bg-orange-600 text-white' 
-                                    : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                            }" ${!canAfford ? 'disabled' : ''}>
-                            ${canAfford ? 'Order' : '💸'}
+                            class="px-5 py-2.5 rounded-xl font-bold text-sm transition-all bg-nct-accent hover:bg-orange-600 text-white">
+                            Order
                         </button>
                     </div>
                 </div>
             `;
         }
 
+        function renderSharedItemCard(item, typeBadge, colorClass, imageDisplay, fallbackEmoji) {
+            const progress = item.fundingGoal > 0 ? (item.currentFunding / item.fundingGoal) * 100 : 0;
+            const remaining = item.fundingGoal - item.currentFunding;
+            
+            return `
+                <div class="bg-nct-card rounded-2xl p-5 border border-purple-500/30 card-hover relative overflow-hidden ${item.funded ? 'glow-purple' : ''}">
+                    <div class="absolute top-3 right-3 flex gap-2">
+                        <span class="text-xs px-2 py-1 rounded-full border ${typeBadge.class}">${typeBadge.icon} Crowdfund</span>
+                    </div>
+                    
+                    <div class="flex items-start gap-4 mt-6">
+                        ${imageDisplay}
+                        ${fallbackEmoji}
+                        <div class="flex-1 min-w-0">
+                            <h3 class="font-bold text-lg truncate">${item.name}</h3>
+                            <p class="text-gray-500 text-sm line-clamp-2">${item.description || 'Shared item - contribute any amount!'}</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Funding Progress -->
+                    <div class="mt-4 p-3 bg-white/5 rounded-xl">
+                        <div class="flex justify-between text-sm mb-2">
+                            <span class="text-gray-400">Funding Progress</span>
+                            <span class="font-mono ${item.funded ? 'text-green-400' : 'text-purple-400'}">${item.currentFunding}/${item.fundingGoal} pts</span>
+                        </div>
+                        <div class="h-3 bg-white/10 rounded-full overflow-hidden">
+                            <div class="h-full ${item.funded ? 'bg-green-500' : 'bg-gradient-to-r from-purple-500 to-pink-500'} rounded-full transition-all duration-500" style="width: ${Math.min(progress, 100)}%"></div>
+                        </div>
+                        <div class="flex justify-between text-xs mt-2">
+                            <span class="text-gray-500">${(item.currentFunding * 250).toLocaleString()} IQD raised</span>
+                            <span class="text-gray-500">${item.funded ? '✅ Funded!' : `${remaining} pts to go`}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-2 mt-4">
+                        <button onclick="showContributors('${item.id}', '${item.name}')" 
+                            class="flex-1 px-4 py-2.5 rounded-xl font-medium text-sm bg-white/5 hover:bg-white/10 transition-all">
+                            👥 Contributors
+                        </button>
+                        ${item.funded 
+                            ? (state.user.isAdmin 
+                                ? `<button onclick="resetSharedItem('${item.id}')" class="flex-1 px-4 py-2.5 rounded-xl font-bold text-sm bg-green-500 hover:bg-green-600 text-white">🔄 Reset</button>`
+                                : `<span class="flex-1 px-4 py-2.5 rounded-xl font-bold text-sm bg-green-500/20 text-green-400 text-center">✅ Funded!</span>`)
+                            : `<button onclick="showContributeModal('${item.id}', '${item.name}', ${item.fundingGoal}, ${item.currentFunding})" 
+                                class="flex-1 px-4 py-2.5 rounded-xl font-bold text-sm bg-purple-500 hover:bg-purple-600 text-white">
+                                💜 Contribute
+                            </button>`
+                        }
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderCommunalItemCard(item, typeBadge, colorClass, imageDisplay, fallbackEmoji) {
+            return `
+                <div class="bg-nct-card rounded-2xl p-5 border border-teal-500/30 card-hover relative overflow-hidden">
+                    <div class="absolute top-3 right-3 flex gap-2">
+                        <span class="text-xs px-2 py-1 rounded-full border ${typeBadge.class}">${typeBadge.icon} Communal</span>
+                    </div>
+                    
+                    <div class="flex items-start gap-4 mt-6">
+                        ${imageDisplay}
+                        ${fallbackEmoji}
+                        <div class="flex-1 min-w-0">
+                            <h3 class="font-bold text-lg truncate">${item.name}</h3>
+                            <p class="text-gray-500 text-sm line-clamp-2">${item.description || 'Cost split equally among all users'}</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Cost Split Info -->
+                    <div class="mt-4 p-3 bg-teal-500/10 rounded-xl border border-teal-500/20">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-teal-400 text-sm font-medium">Total Cost</p>
+                                <p class="font-mono font-bold text-xl">${item.pointCost} pts</p>
+                                <p class="text-xs text-gray-500">${(item.pointCost * 250).toLocaleString()} IQD</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-gray-400 text-sm">Split among</p>
+                                <p class="font-mono font-bold text-xl text-teal-400">${state.allUsers.length || '?'}</p>
+                                <p class="text-xs text-gray-500">active users</p>
+                            </div>
+                        </div>
+                        ${state.allUsers.length > 0 ? `
+                            <div class="mt-2 pt-2 border-t border-teal-500/20 text-center">
+                                <span class="text-gray-400 text-sm">≈ </span>
+                                <span class="font-mono font-bold text-teal-400">${Math.ceil(item.pointCost / state.allUsers.length)} pts</span>
+                                <span class="text-gray-400 text-sm"> per person</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                    
+                    <div class="mt-4">
+                        ${state.user.isAdmin 
+                            ? `<button onclick="showCommunalPurchaseModal('${item.id}', '${item.name}', ${item.pointCost})" 
+                                class="w-full px-5 py-3 rounded-xl font-bold text-sm bg-teal-500 hover:bg-teal-600 text-white transition-all">
+                                🏢 Purchase & Split Cost
+                            </button>`
+                            : `<div class="text-center text-gray-400 text-sm py-3">
+                                <span>🔒</span> Admin purchases this item
+                            </div>`
+                        }
+                    </div>
+                </div>
+            `;
+        }
+
         function renderHistory() {
+            const getTypeIcon = (type) => {
+                if (type === 'Contribution') return '💜';
+                if (type === 'Communal Split') return '🏢';
+                return '🛒';
+            };
+            
             return `
                 <div class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onclick="if(event.target===this){state.showHistory=false;render()}">
                     <div class="glass rounded-2xl w-full max-w-lg max-h-[80vh] overflow-hidden border border-white/10">
                         <div class="p-5 border-b border-white/10 flex items-center justify-between">
                             <div>
                                 <h2 class="text-xl font-bold">My Requests</h2>
-                                <p class="text-gray-400 text-sm">Track your orders</p>
+                                <p class="text-gray-400 text-sm">All orders & contributions</p>
                             </div>
                             <button onclick="state.showHistory=false;render()" class="p-2 hover:bg-white/10 rounded-xl">✕</button>
                         </div>
@@ -413,16 +555,16 @@
                             ${state.requests.length === 0 
                                 ? `<div class="text-center py-10"><span class="text-4xl">📋</span><p class="text-gray-400 mt-4">No requests yet</p></div>`
                                 : state.requests.map(req => `
-                                    <div class="bg-white/5 rounded-xl p-4 mb-3 flex items-center justify-between">
-                                        <div class="flex items-center gap-3">
-                                            <span class="text-2xl">${req.itemEmoji || '📦'}</span>
-                                            <div>
-                                                <p class="font-medium">${req.title}</p>
-                                                <p class="text-xs text-gray-500">${req.dateRequested ? new Date(req.dateRequested).toLocaleDateString() : 'N/A'}</p>
+                                    <div class="bg-white/5 rounded-xl p-4 mb-3">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-xl">${getTypeIcon(req.requestType)}</span>
+                                                <span class="text-xs px-2 py-0.5 rounded-full ${
+                                                    req.requestType === 'Contribution' ? 'bg-purple-500/20 text-purple-400' :
+                                                    req.requestType === 'Communal Split' ? 'bg-teal-500/20 text-teal-400' :
+                                                    'bg-blue-500/20 text-blue-400'
+                                                }">${req.requestType}</span>
                                             </div>
-                                        </div>
-                                        <div class="text-right">
-                                            <p class="font-mono font-bold text-nct-accent">${req.pointsSpent} pts</p>
                                             <span class="text-xs px-2 py-1 rounded-full ${
                                                 req.status === 'Pending' ? 'bg-yellow-500/20 text-yellow-400' :
                                                 req.status === 'Approved' ? 'bg-green-500/20 text-green-400' :
@@ -430,6 +572,12 @@
                                                 'bg-blue-500/20 text-blue-400'
                                             }">${req.status}</span>
                                         </div>
+                                        <p class="font-medium">${req.title}</p>
+                                        <div class="flex justify-between items-center mt-2">
+                                            <p class="text-xs text-gray-500">${req.dateRequested ? new Date(req.dateRequested).toLocaleDateString() : 'N/A'}</p>
+                                            <p class="font-mono font-bold text-nct-accent">${req.contributionAmount || req.pointsSpent} pts</p>
+                                        </div>
+                                        ${req.notes ? `<p class="text-xs text-gray-500 mt-2 italic">${req.notes}</p>` : ''}
                                     </div>
                                 `).join('')
                             }
@@ -444,26 +592,39 @@
                 <div class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onclick="if(event.target===this){state.showAddItem=false;render()}">
                     <div class="glass rounded-2xl w-full max-w-md border border-white/10">
                         <div class="p-5 border-b border-white/10 flex items-center justify-between">
-                            <h2 class="text-xl font-bold">Suggest New Item</h2>
+                            <h2 class="text-xl font-bold">Add New Item</h2>
                             <button onclick="state.showAddItem=false;render()" class="p-2 hover:bg-white/10 rounded-xl">✕</button>
                         </div>
                         
                         <div class="p-5 space-y-4">
                             <div>
                                 <label class="block text-sm text-gray-400 mb-2">Item Name *</label>
-                                <input type="text" id="itemName" placeholder="e.g., Croissant"
+                                <input type="text" id="itemName" placeholder="e.g., Relish Sauce"
                                     class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white">
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-2">Item Type *</label>
+                                <select id="itemType" onchange="toggleFundingGoal()" class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white">
+                                    <option value="Individual">🛒 Individual - Personal orders</option>
+                                    <option value="Shared">🤝 Shared - Crowdfunded by team</option>
+                                    <option value="Communal">🏢 Communal - Cost split equally</option>
+                                </select>
                             </div>
                             <div>
                                 <label class="block text-sm text-gray-400 mb-2">Category</label>
                                 <select id="itemCategory" class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white">
                                     ${CATEGORIES.filter(c => c !== 'All').map(c => `<option value="${c}">${c}</option>`).join('')}
-                                    <option value="Other">Other</option>
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-sm text-gray-400 mb-2">Suggested Point Cost *</label>
-                                <input type="number" id="itemCost" placeholder="e.g., 10" min="1"
+                                <label class="block text-sm text-gray-400 mb-2">Point Cost *</label>
+                                <input type="number" id="itemCost" placeholder="e.g., 38" min="1"
+                                    class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white">
+                                <p class="text-xs text-gray-500 mt-1">1 point = 250 IQD</p>
+                            </div>
+                            <div id="fundingGoalRow" style="display:none">
+                                <label class="block text-sm text-gray-400 mb-2">Funding Goal (for Shared items)</label>
+                                <input type="number" id="fundingGoal" placeholder="Leave empty to use Point Cost"
                                     class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white">
                             </div>
                             <div>
@@ -471,11 +632,161 @@
                                 <textarea id="itemDesc" placeholder="Brief description..." rows="2"
                                     class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white resize-none"></textarea>
                             </div>
-                            <button type="button" id="submitItemBtn" onclick="addItem()"
-                                class="w-full bg-nct-accent hover:bg-orange-600 py-3 rounded-xl font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                ${state.addingItem ? 'disabled' : ''}>
-                                ${state.addingItem ? 'Submitting...' : 'Submit Suggestion'}
+                            <button type="button" onclick="addItem()"
+                                class="w-full bg-nct-accent hover:bg-orange-600 py-3 rounded-xl font-bold transition-colors">
+                                Add Item
                             </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderContributeModal() {
+            const item = state.showContribute;
+            const remaining = item.fundingGoal - item.currentFunding;
+            
+            return `
+                <div class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onclick="if(event.target===this){state.showContribute=null;render()}">
+                    <div class="glass rounded-2xl w-full max-w-sm border border-purple-500/30">
+                        <div class="p-5 border-b border-white/10">
+                            <h2 class="text-xl font-bold">💜 Contribute</h2>
+                            <p class="text-gray-400">${item.name}</p>
+                        </div>
+                        
+                        <div class="p-5">
+                            <div class="bg-purple-500/10 rounded-xl p-4 mb-4">
+                                <div class="flex justify-between mb-2">
+                                    <span class="text-gray-400">Progress</span>
+                                    <span class="font-mono text-purple-400">${item.currentFunding}/${item.fundingGoal} pts</span>
+                                </div>
+                                <div class="h-2 bg-white/10 rounded-full overflow-hidden">
+                                    <div class="h-full bg-purple-500 rounded-full" style="width: ${(item.currentFunding/item.fundingGoal)*100}%"></div>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-2">${remaining} pts remaining</p>
+                            </div>
+                            
+                            <div class="mb-4">
+                                <label class="block text-sm text-gray-400 mb-2">Your Contribution</label>
+                                <div class="flex gap-2 mb-3">
+                                    ${[5, 10, 15, 20].map(amt => `
+                                        <button onclick="document.getElementById('contribAmount').value=${Math.min(amt, remaining)}" 
+                                            class="flex-1 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm font-mono ${amt > remaining ? 'opacity-50' : ''}">
+                                            ${amt}
+                                        </button>
+                                    `).join('')}
+                                </div>
+                                <input type="number" id="contribAmount" value="${Math.min(5, remaining)}" min="1" max="${remaining}"
+                                    class="w-full bg-nct-surface border border-white/10 rounded-xl px-4 py-3 text-white font-mono text-center text-xl">
+                                <p class="text-xs text-gray-500 mt-1 text-center">Max: ${remaining} pts</p>
+                            </div>
+                            
+                            <div class="flex gap-3">
+                                <button onclick="state.showContribute=null;render()" 
+                                    class="flex-1 py-3 rounded-xl bg-white/10 hover:bg-white/20 font-medium">
+                                    Cancel
+                                </button>
+                                <button onclick="contribute('${item.id}', '${item.name}')" 
+                                    class="flex-1 py-3 rounded-xl bg-purple-500 hover:bg-purple-600 font-bold">
+                                    Contribute
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderCommunalPurchaseModal() {
+            const item = state.showCommunalPurchase;
+            const userCount = state.allUsers.length;
+            const splitAmount = userCount > 0 ? Math.ceil(item.totalCost / userCount) : item.totalCost;
+            
+            return `
+                <div class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onclick="if(event.target===this){state.showCommunalPurchase=null;render()}">
+                    <div class="glass rounded-2xl w-full max-w-sm border border-teal-500/30">
+                        <div class="p-5 border-b border-white/10">
+                            <h2 class="text-xl font-bold">🏢 Communal Purchase</h2>
+                            <p class="text-gray-400">${item.name}</p>
+                        </div>
+                        
+                        <div class="p-5">
+                            <div class="bg-teal-500/10 rounded-xl p-4 mb-4">
+                                <div class="grid grid-cols-2 gap-4 text-center">
+                                    <div>
+                                        <p class="text-gray-400 text-sm">Total Cost</p>
+                                        <p class="font-mono font-bold text-2xl">${item.totalCost}</p>
+                                        <p class="text-xs text-gray-500">${(item.totalCost * 250).toLocaleString()} IQD</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-gray-400 text-sm">Per Person</p>
+                                        <p class="font-mono font-bold text-2xl text-teal-400">${splitAmount}</p>
+                                        <p class="text-xs text-gray-500">${userCount} users</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3 mb-4">
+                                <p class="text-yellow-400 text-sm">⚠️ This will deduct <strong>${splitAmount} pts</strong> from ALL ${userCount} active users.</p>
+                            </div>
+                            
+                            <div class="flex gap-3">
+                                <button onclick="state.showCommunalPurchase=null;render()" 
+                                    class="flex-1 py-3 rounded-xl bg-white/10 hover:bg-white/20 font-medium">
+                                    Cancel
+                                </button>
+                                <button onclick="purchaseCommunal('${item.id}', '${item.name}', ${item.totalCost})" 
+                                    class="flex-1 py-3 rounded-xl bg-teal-500 hover:bg-teal-600 font-bold">
+                                    Confirm Purchase
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderContributorsModal() {
+            const data = state.showContributors;
+            
+            return `
+                <div class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onclick="if(event.target===this){state.showContributors=null;render()}">
+                    <div class="glass rounded-2xl w-full max-w-sm border border-white/10">
+                        <div class="p-5 border-b border-white/10 flex items-center justify-between">
+                            <div>
+                                <h2 class="text-xl font-bold">👥 Contributors</h2>
+                                <p class="text-gray-400 text-sm">${data.itemName}</p>
+                            </div>
+                            <button onclick="state.showContributors=null;render()" class="p-2 hover:bg-white/10 rounded-xl">✕</button>
+                        </div>
+                        
+                        <div class="p-5 max-h-[60vh] overflow-y-auto">
+                            ${data.loading 
+                                ? `<div class="text-center py-8"><div class="text-2xl pulse">⏳</div></div>`
+                                : data.contributions.length === 0
+                                    ? `<div class="text-center py-8 text-gray-400">No contributions yet</div>`
+                                    : `
+                                        <div class="bg-purple-500/10 rounded-xl p-3 mb-4 text-center">
+                                            <span class="text-gray-400">Total: </span>
+                                            <span class="font-mono font-bold text-purple-400">${data.totalContributed} pts</span>
+                                            <span class="text-gray-400"> from ${data.contributorCount} people</span>
+                                        </div>
+                                        ${data.contributions.map(c => `
+                                            <div class="flex items-center justify-between py-3 border-b border-white/5 last:border-0">
+                                                <div class="flex items-center gap-3">
+                                                    <div class="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center text-sm">
+                                                        ${c.userName.charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <p class="font-medium">${c.userName}</p>
+                                                        <p class="text-xs text-gray-500">${new Date(c.date).toLocaleDateString()}</p>
+                                                    </div>
+                                                </div>
+                                                <span class="font-mono font-bold text-purple-400">+${c.amount}</span>
+                                            </div>
+                                        `).join('')}
+                                    `
+                            }
                         </div>
                     </div>
                 </div>
@@ -485,7 +796,7 @@
         function renderToast() {
             const bgColor = state.toast.type === 'success' ? 'bg-nct-teal' : state.toast.type === 'error' ? 'bg-red-500' : 'bg-nct-accent';
             return `
-                <div class="fixed top-4 right-4 ${bgColor} text-white px-6 py-4 rounded-xl shadow-2xl z-50 flex items-center gap-3">
+                <div class="fixed top-4 right-4 ${bgColor} text-white px-6 py-4 rounded-xl shadow-2xl z-50 flex items-center gap-3 max-w-sm">
                     <span class="text-xl">${state.toast.type === 'success' ? '✓' : state.toast.type === 'error' ? '✕' : 'ℹ'}</span>
                     <span>${state.toast.message}</span>
                 </div>
@@ -493,7 +804,7 @@
         }
 
         // ============================================
-        // EVENT HANDLERS
+        // EVENT HANDLERS & ACTIONS
         // ============================================
         
         function attachEventListeners() {
@@ -511,6 +822,14 @@
                     state.searchQuery = e.target.value;
                     render();
                 };
+            }
+        }
+
+        function toggleFundingGoal() {
+            const itemType = document.getElementById('itemType').value;
+            const fundingRow = document.getElementById('fundingGoalRow');
+            if (fundingRow) {
+                fundingRow.style.display = itemType === 'Shared' ? 'block' : 'none';
             }
         }
 
@@ -534,8 +853,9 @@
                 showToast('Welcome back, ' + state.user.name + '!', 'success');
                 await loadItems();
                 await loadRequests();
+                await loadAllUsers();
             } else {
-                showToast(result.error || 'Login failed. Check console for details.', 'error');
+                showToast(result.error || 'Login failed', 'error');
             }
             
             state.loading = false;
@@ -546,8 +866,9 @@
             state.user = null;
             state.items = [];
             state.requests = [];
+            state.allUsers = [];
             localStorage.removeItem('nctshop_user');
-            showToast('Logged out successfully', 'info');
+            showToast('Logged out', 'info');
             render();
         }
 
@@ -560,29 +881,21 @@
             if (result.success && result.user) {
                 state.user = result.user;
                 localStorage.setItem('nctshop_user', JSON.stringify(result.user));
-                showToast('Points updated!', 'success');
-            } else {
-                showToast('Failed to refresh user data', 'error');
+                showToast('Data updated!', 'success');
             }
             render();
         }
 
         async function loadItems() {
-            console.log('🔄 Loading items...');
             state.loading = true;
             render();
             
             const result = await apiCall('getItems');
             
             if (result.success && result.items) {
-                state.items = result.items.map(item => ({
-                    ...item,
-                    emoji: getEmoji(item.name, item.category)
-                }));
-                console.log('✅ Items loaded:', state.items.length);
+                state.items = result.items;
             } else {
-                console.error('❌ Failed to load items:', result.error);
-                showToast('Failed to load items: ' + (result.error || 'Unknown error'), 'error');
+                showToast('Failed to load items', 'error');
                 state.items = [];
             }
             
@@ -593,18 +906,18 @@
         async function loadRequests() {
             if (!state.user) return;
             
-            console.log('🔄 Loading requests...');
             const result = await apiCall('getUserRequests', { userId: state.user.id });
             
             if (result.success && result.requests) {
-                state.requests = result.requests.map(req => ({
-                    ...req,
-                    itemEmoji: getEmoji(req.title, '')
-                }));
-                console.log('✅ Requests loaded:', state.requests.length);
-            } else {
-                console.error('❌ Failed to load requests:', result.error);
-                state.requests = [];
+                state.requests = result.requests;
+            }
+        }
+
+        async function loadAllUsers() {
+            const result = await apiCall('getAllUsers');
+            
+            if (result.success && result.users) {
+                state.allUsers = result.users;
             }
         }
 
@@ -613,21 +926,16 @@
             render();
         }
 
+        function setItemType(type) {
+            state.selectedItemType = type;
+            render();
+        }
+
         async function orderItem(itemId) {
             const item = state.items.find(i => i.id === itemId);
-            if (!item) {
-                showToast('Item not found!', 'error');
-                return;
-            }
+            if (!item) return;
             
-            if (state.user.pointsBalance < item.pointCost) {
-                showToast(`Not enough points! Need ${item.pointCost}, have ${state.user.pointsBalance}`, 'error');
-                return;
-            }
-            
-            if (!confirm(`Order ${item.name} for ${item.pointCost} points?`)) {
-                return;
-            }
+            if (!confirm(`Order ${item.name} for ${item.pointCost} points?`)) return;
             
             showToast('Placing order...', 'info');
             
@@ -640,66 +948,153 @@
             });
             
             if (result.success) {
-                // Update user balance
                 if (result.newBalance !== undefined) {
                     state.user.pointsBalance = result.newBalance;
-                } else {
-                    state.user.pointsBalance -= item.pointCost;
+                    localStorage.setItem('nctshop_user', JSON.stringify(state.user));
                 }
-                state.user.pointsUsed += item.pointCost;
-                localStorage.setItem('nctshop_user', JSON.stringify(state.user));
-                
-                showToast(`${item.name} ordered successfully! ✨`, 'success');
-                
-                // Reload requests and user data
+                showToast(`${item.name} ordered! ✨`, 'success');
                 await loadRequests();
-                setTimeout(() => refreshUserData(), 1000);
-                
             } else {
-                showToast(result.error || 'Order failed. Check console.', 'error');
+                showToast(result.error || 'Order failed', 'error');
+            }
+            
+            render();
+        }
+
+        function showContributeModal(itemId, itemName, fundingGoal, currentFunding) {
+            state.showContribute = { id: itemId, name: itemName, fundingGoal, currentFunding };
+            render();
+        }
+
+        async function contribute(itemId, itemName) {
+            const amountInput = document.getElementById('contribAmount');
+            const amount = parseInt(amountInput?.value) || 0;
+            
+            if (amount <= 0) {
+                showToast('Enter a valid amount', 'error');
+                return;
+            }
+            
+            showToast('Contributing...', 'info');
+            
+            const result = await apiCall('contribute', {}, {
+                userId: state.user.id,
+                itemId: itemId,
+                itemName: itemName,
+                contributionAmount: amount
+            });
+            
+            if (result.success) {
+                if (result.newBalance !== undefined) {
+                    state.user.pointsBalance = result.newBalance;
+                    localStorage.setItem('nctshop_user', JSON.stringify(state.user));
+                }
+                state.showContribute = null;
+                showToast(result.message || 'Contributed!', 'success');
+                await loadItems();
+                await loadRequests();
+            } else {
+                showToast(result.error || 'Contribution failed', 'error');
+            }
+            
+            render();
+        }
+
+        function showCommunalPurchaseModal(itemId, itemName, totalCost) {
+            state.showCommunalPurchase = { id: itemId, name: itemName, totalCost };
+            render();
+        }
+
+        async function purchaseCommunal(itemId, itemName, totalCost) {
+            showToast('Processing purchase...', 'info');
+            
+            const result = await apiCall('purchaseCommunal', {}, {
+                adminUserId: state.user.id,
+                itemId: itemId,
+                itemName: itemName,
+                totalCost: totalCost
+            });
+            
+            if (result.success) {
+                state.showCommunalPurchase = null;
+                showToast(result.message || 'Purchased!', 'success');
+                await refreshUserData();
+                await loadRequests();
+            } else {
+                showToast(result.error || 'Purchase failed', 'error');
+            }
+            
+            render();
+        }
+
+        async function showContributors(itemId, itemName) {
+            state.showContributors = { itemId, itemName, loading: true, contributions: [], totalContributed: 0, contributorCount: 0 };
+            render();
+            
+            const result = await apiCall('getSharedItemContributions', { itemId });
+            
+            if (result.success) {
+                state.showContributors = {
+                    ...state.showContributors,
+                    loading: false,
+                    contributions: result.contributions,
+                    totalContributed: result.totalContributed,
+                    contributorCount: result.contributorCount
+                };
+            } else {
+                state.showContributors.loading = false;
+            }
+            
+            render();
+        }
+
+        async function resetSharedItem(itemId) {
+            if (!confirm('Reset funding to 0? This should be done after the item is purchased.')) return;
+            
+            const result = await apiCall('resetSharedItem', {}, {
+                adminUserId: state.user.id,
+                itemId: itemId
+            });
+            
+            if (result.success) {
+                showToast('Item reset!', 'success');
+                await loadItems();
+            } else {
+                showToast(result.error || 'Reset failed', 'error');
             }
             
             render();
         }
 
         async function addItem() {
-            const nameInput = document.getElementById('itemName');
-            const categoryInput = document.getElementById('itemCategory');
-            const costInput = document.getElementById('itemCost');
-            const descInput = document.getElementById('itemDesc');
-            
-            const name = nameInput?.value?.trim();
-            const category = categoryInput?.value;
-            const pointCost = parseInt(costInput?.value);
-            const description = descInput?.value?.trim() || '';
+            const name = document.getElementById('itemName')?.value?.trim();
+            const itemType = document.getElementById('itemType')?.value;
+            const category = document.getElementById('itemCategory')?.value;
+            const pointCost = parseInt(document.getElementById('itemCost')?.value);
+            const fundingGoal = parseInt(document.getElementById('fundingGoal')?.value) || pointCost;
+            const description = document.getElementById('itemDesc')?.value?.trim();
             
             if (!name) {
-                showToast('Please enter item name', 'error');
+                showToast('Enter item name', 'error');
                 return;
             }
             if (!pointCost || pointCost < 1) {
-                showToast('Please enter a valid point cost (minimum 1)', 'error');
+                showToast('Enter valid point cost', 'error');
                 return;
             }
             
-            state.addingItem = true;
-            render();
+            showToast('Adding item...', 'info');
             
-            const result = await apiCall('addItem', {}, { 
-                name, 
-                category, 
-                pointCost, 
-                description 
+            const result = await apiCall('addItem', {}, {
+                name, itemType, category, pointCost, fundingGoal, description
             });
-            
-            state.addingItem = false;
             
             if (result.success) {
                 state.showAddItem = false;
-                showToast('Item suggestion submitted! Admin will review.', 'success');
+                showToast('Item added!', 'success');
                 await loadItems();
             } else {
-                showToast(result.error || 'Failed to add item. Check console.', 'error');
+                showToast(result.error || 'Failed to add item', 'error');
             }
             
             render();
@@ -716,12 +1111,12 @@
 
         function getEmoji(name, category) {
             const n = (name || '').toLowerCase();
+            if (n.includes('water')) return '💧';
+            if (n.includes('relish') || n.includes('sauce')) return '🫙';
             if (n.includes('pepsi') || n.includes('cola')) return '🥤';
             if (n.includes('coffee')) return '☕';
             if (n.includes('tea')) return '🍵';
-            if (n.includes('water')) return '💧';
             if (n.includes('juice')) return '🧃';
-            if (n.includes('energy')) return '⚡';
             if (n.includes('sandwich')) return '🥪';
             if (n.includes('chip')) return '🍟';
             if (n.includes('chocolate')) return '🍫';
@@ -740,23 +1135,20 @@
         // ============================================
         
         async function init() {
-            console.log('🚀 NCT Shop Initializing...');
-            console.log('📍 API URL:', CONFIG.API_URL);
-            console.log('👤 Saved user:', state.user ? state.user.name : 'None');
+            console.log('🚀 NCT Shop v2 Initializing...');
             
             if (state.user) {
                 state.loading = true;
                 render();
                 await loadItems();
                 await loadRequests();
+                await loadAllUsers();
                 await refreshUserData();
                 state.loading = false;
             }
             render();
-            console.log('✅ Initialization complete');
         }
 
-        // Start the app
         init();
     </script>
 </body>
